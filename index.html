@@ -1,0 +1,1318 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MoonTech Client Intelligence 2.0</title>
+<script>
+/* ============================================================
+   CONFIG — financial rules preserved verbatim from V1.
+   Do not change numbers here without a reconciliation sign-off.
+   ============================================================ */
+const CONFIG = {
+  SHEET_CSV_URL: "https://docs.google.com/spreadsheets/d/e/2PACX-1vTN4F4HrbFaylUihY5v3JQ6cG8nFwpkQgpfn-zndurG2WGEKAY011cll7OwYJGuR3_wqV76pjSkG14x/pub?gid=634629514&single=true&output=csv",
+  TRACKER_CSV_URL: "https://docs.google.com/spreadsheets/d/e/2PACX-1vSEEEIegwsvOyMt4ZKFffwcOyCaPVJhftkr8Wyns6u_32dUbyudrArqFFB3Ac6CjTsaEV3ui1RPoDg8/pub?gid=793116860&single=true&output=csv",
+  AED_PER_USD: 3.6725,
+  VAT_RATE: 0.05,
+  ARPA_TARGET: 24000,
+  M3_MONTHLY: 3000,
+  ARPA_INCLUDE_BRANDS: ["Jetour"],
+  REACQUIRED: [ { brand:"JustHype", month:"2026-07" } ],
+  BRAND_OVERRIDES: { "elite cars": "Jetour" },
+  ACQUISITION_START: "2025-10-01",
+  CONVERSION_START:  "2026-02-01",
+  REFRESH_SECONDS: 0
+};
+function activeUrl(){ return CONFIG.SHEET_CSV_URL; }
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Instrument+Serif&display=swap" rel="stylesheet">
+<style>
+/* ===== Design tokens (spec §1B) ===== */
+:root, [data-theme="light"]{
+  --bg:#F4F7FC; --surface:#FFFFFF; --raised:#F7F9FD; --surface2:#EEF2FA;
+  --ink:#17213D; --ink-soft:#5E6C84; --ink-faint:#8E9EB7;
+  --line:#DCE5F2; --line-strong:#C9D5EA;
+  --brand:#3867E8; --brand-soft:#E7EDFD; --brand-ink:#2850C8;
+  --violet:#6252C8; --violet-soft:#ECE9FA; --violet-ink:#4E3FB0;
+  --green:#168362; --green-soft:#E1F3EC; --amber:#B07A17; --amber-soft:#F7EEDD;
+  --red:#C74858; --red-soft:#FBE7EA; --neutral:#8E9EB7; --neutral-soft:#EDF0F6;
+  --rail:#101A2E; --rail-ink:#C7D2E8; --rail-line:rgba(255,255,255,.08);
+  --shadow:0 1px 2px rgba(23,33,61,.04), 0 6px 20px rgba(23,33,61,.06);
+  --shadow-lift:0 2px 8px rgba(23,33,61,.07), 0 18px 40px rgba(56,103,232,.12);
+  --grid:#EBEFF8; --radius:14px;
+}
+[data-theme="dark"]{
+  --bg:#10192B; --surface:#1B2942; --raised:#24344F; --surface2:#1F2E49;
+  --ink:#F1F5FF; --ink-soft:#BAC7DF; --ink-faint:#8293B2;
+  --line:#384965; --line-strong:#46597A;
+  --brand:#89A8FA; --brand-soft:rgba(137,168,250,.16); --brand-ink:#A9C0FB;
+  --violet:#B4A5FA; --violet-soft:rgba(180,165,250,.16); --violet-ink:#C7BCFC;
+  --green:#67DAB1; --green-soft:rgba(103,218,177,.15); --amber:#EFC172; --amber-soft:rgba(239,193,114,.15);
+  --red:#FF8B9B; --red-soft:rgba(255,139,155,.15); --neutral:#8293B2; --neutral-soft:rgba(130,147,178,.15);
+  --rail:#0B1422; --rail-ink:#AEBDD8; --rail-line:rgba(255,255,255,.06);
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.35);
+  --shadow-lift:0 2px 10px rgba(0,0,0,.45), 0 20px 46px rgba(0,0,0,.4);
+  --grid:#2A3A58; --radius:14px;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0; background:var(--bg); color:var(--ink);
+  font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif; font-weight:400; line-height:1.45;
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility; -moz-osx-font-smoothing:grayscale;
+  font-feature-settings:"tnum" 1; transition:background .25s,color .25s;}
+.num,.mono{font-variant-numeric:tabular-nums}
+a{color:inherit}
+
+/* ===== Shell ===== */
+.app{display:grid; grid-template-columns:232px 1fr; min-height:100vh}
+.rail{background:var(--rail); color:var(--rail-ink); border-right:1px solid var(--rail-line); padding:20px 14px;
+  display:flex; flex-direction:column; gap:3px; position:sticky; top:0; height:100vh; overflow-y:auto}
+.rail .brand{display:block; padding:4px 10px 20px}
+.wordmark{display:flex; align-items:flex-start; line-height:1; color:#fff}
+.wm-moon{font-family:'Instrument Serif',Georgia,serif; font-size:25px; letter-spacing:.3px; display:inline-flex; align-items:flex-start}
+.wm-star{width:9px; height:9px; margin-left:1px; margin-top:2px; color:#89A8FA}
+.wm-tech{font-family:Inter; font-weight:500; font-size:14px; margin-left:6px; margin-top:8px; letter-spacing:-.2px}
+.brand .sub{font-size:8.5px; letter-spacing:2.4px; text-transform:uppercase; color:rgba(255,255,255,.45); margin-top:7px; padding-left:2px}
+.railsec{font-size:9px; letter-spacing:1.6px; text-transform:uppercase; color:rgba(255,255,255,.34); padding:16px 10px 6px}
+.navitem{display:flex; align-items:center; gap:10px; padding:9px 12px; border-radius:9px; color:var(--rail-ink);
+  font-size:13.5px; cursor:pointer; transition:.14s; border:none; background:none; width:100%; text-align:left; font-family:inherit}
+.navitem:hover{background:rgba(255,255,255,.07); color:#fff}
+.navitem.on{background:var(--brand); color:#fff}
+[data-theme="light"] .navitem.on{background:var(--brand); color:#fff}
+.navitem .ic{width:16px;height:16px;flex:none;opacity:.92}
+.main{padding:24px 28px 64px; min-width:0}
+
+/* ===== Header ===== */
+.pagehead{display:flex; align-items:flex-start; gap:18px; flex-wrap:wrap; margin-bottom:14px}
+.pagehead .tt{margin-right:auto; min-width:0}
+.pagehead h1{font-size:22px; font-weight:700; letter-spacing:-.4px; margin:0; color:var(--ink)}
+.pagehead .psub{font-size:12.5px; color:var(--ink-soft); margin-top:3px}
+.headctl{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+.toggle{display:inline-flex; background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:3px}
+.toggle button{border:none; background:none; font:inherit; font-size:12.5px; color:var(--ink-soft); padding:6px 12px; border-radius:7px; cursor:pointer; display:inline-flex; align-items:center; gap:6px}
+.toggle button.on{background:var(--brand-soft); color:var(--brand-ink); font-weight:600}
+.field{height:34px; border:1px solid var(--line); border-radius:9px; background:var(--surface); padding:0 11px; font:inherit; font-size:12.5px; color:var(--ink); transition:.15s}
+.field:focus{outline:none; border-color:var(--brand); box-shadow:0 0 0 3px var(--brand-soft)}
+
+/* ===== Filter bar ===== */
+.filterbar{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:14px}
+.seg{display:inline-flex; background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:3px}
+.seg button{border:none; background:none; font:inherit; font-size:12.5px; color:var(--ink-soft); padding:6px 13px; border-radius:7px; cursor:pointer; white-space:nowrap}
+.seg button.on{background:var(--brand); color:#fff; font-weight:600}
+.btn{height:34px; border:1px solid var(--line); background:var(--surface); border-radius:9px; padding:0 13px; font:inherit; font-size:12.5px; color:var(--ink-soft); cursor:pointer; transition:.15s; white-space:nowrap; display:inline-flex; align-items:center; gap:6px}
+.btn:hover{border-color:var(--brand); color:var(--brand-ink)}
+.btn.primary{background:var(--brand); border-color:var(--brand); color:#fff}
+.btn.dark{background:var(--ink); border-color:var(--ink); color:var(--bg)}
+.grow{margin-left:auto}
+.search-wrap{position:relative}
+.search-wrap .field{min-width:200px; padding-left:31px}
+.search-wrap svg{position:absolute; left:10px; top:9px; width:15px; height:15px; stroke:var(--ink-faint); fill:none}
+.typeahead{position:absolute; top:38px; left:0; right:0; background:var(--surface); border:1px solid var(--line-strong); border-radius:11px; box-shadow:var(--shadow-lift); z-index:60; max-height:280px; overflow:auto; display:none}
+.typeahead.open{display:block}
+.typeahead .item{padding:9px 12px; font-size:12.5px; cursor:pointer; display:flex; justify-content:space-between; gap:10px}
+.typeahead .item:hover{background:var(--brand-soft)}
+.typeahead .item small{color:var(--ink-faint)}
+input[type=file]{display:none}
+.custompop{position:absolute; margin-top:6px; background:var(--surface); border:1px solid var(--line-strong); border-radius:12px; box-shadow:var(--shadow-lift); padding:14px; z-index:70; display:none; min-width:230px}
+.custompop.open{display:block}
+.cprow{display:flex; align-items:center; gap:8px; margin-bottom:8px}
+.cprow label{font-size:11px; color:var(--ink-soft); width:38px}
+
+/* ===== Source state + data quality ===== */
+.srcbar{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:14px; padding:9px 14px; border:1px solid var(--line); background:var(--surface); border-radius:11px; font-size:12px; color:var(--ink-soft)}
+.dot{width:8px;height:8px;border-radius:50%;flex:none}
+.dot.live{background:var(--green); box-shadow:0 0 7px var(--green)} .dot.sample{background:var(--amber); box-shadow:0 0 7px var(--amber)}
+.dot.err{background:var(--red); box-shadow:0 0 7px var(--red)} .dot.stale{background:var(--neutral)}
+.srcbar .sep{color:var(--line-strong)}
+.dq{margin-left:auto; cursor:pointer; color:var(--amber); font-weight:600}
+.dqpanel{display:none; margin:0 0 14px; border:1px solid var(--amber); background:var(--amber-soft); border-radius:12px; padding:12px 15px; font-size:12.5px; color:var(--ink)}
+.dqpanel.open{display:block}
+.dqpanel b{font-weight:600} .dqpanel ul{margin:7px 0 0; padding-left:18px} .dqpanel li{margin:3px 0}
+
+/* ===== Cards / KPIs ===== */
+.kpis{display:grid; grid-template-columns:repeat(5,1fr); gap:13px; margin-bottom:16px}
+.kpi{position:relative; border-radius:var(--radius); border:1px solid var(--line); background:var(--surface); padding:16px 17px; box-shadow:var(--shadow); min-width:0; overflow:hidden; transition:transform .15s,box-shadow .15s}
+.kpi:hover{transform:translateY(-2px); box-shadow:var(--shadow-lift)}
+.kpi .top{display:flex; align-items:center; gap:9px; margin-bottom:12px}
+.kpi .ico{width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:var(--brand-soft);color:var(--brand-ink);flex:none}
+.kpi .ico svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2}
+.kpi .h{font-size:11.5px; color:var(--ink-soft); font-weight:500}
+.kpi .v{font-size:27px; font-weight:700; letter-spacing:-.8px; line-height:1; color:var(--ink)}
+.kpi .cur{font-size:14px; font-weight:600; color:var(--ink-faint); margin-right:2px}
+.kpi .s{font-size:11.5px; color:var(--ink-soft); margin-top:9px; display:flex; align-items:center; gap:6px; flex-wrap:wrap}
+.chip{font-size:11px; padding:2px 8px; border-radius:20px; font-weight:600; display:inline-flex; align-items:center; gap:3px}
+.chip.up{color:var(--green); background:var(--green-soft)} .chip.down{color:var(--red); background:var(--red-soft)}
+.chip.flat{color:var(--ink-soft); background:var(--neutral-soft)}
+.kpi.accent-green .ico{background:var(--green-soft);color:var(--green)} .kpi.accent-violet .ico{background:var(--violet-soft);color:var(--violet-ink)}
+.kpi.accent-amber .ico{background:var(--amber-soft);color:var(--amber)} .kpi.accent-red .ico{background:var(--red-soft);color:var(--red)}
+
+.panel{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); padding:18px 20px; min-width:0}
+.panel h3{font-size:13.5px; letter-spacing:-.1px; color:var(--ink); margin:0 0 3px; font-weight:600; display:flex; align-items:center; gap:7px}
+.panel .lede{font-size:12px; color:var(--ink-faint); margin:0 0 15px}
+.panel .hl{font-size:12px; color:var(--brand-ink); cursor:default; margin-left:auto; font-weight:500}
+.ph-row{display:flex; align-items:flex-start; gap:12px}
+.grid2{display:grid; grid-template-columns:1.55fr 1fr; gap:15px; margin-top:15px}
+.grid2b{display:grid; grid-template-columns:1fr 1fr; gap:15px; margin-top:15px}
+.grid3{display:grid; grid-template-columns:1.3fr 1fr 1fr; gap:15px; margin-top:15px}
+@media(max-width:1250px){ .grid2,.grid2b,.grid3{grid-template-columns:1fr} .kpis{grid-template-columns:repeat(3,1fr)} }
+@media(max-width:1050px){ .app{grid-template-columns:1fr} .rail{position:static;height:auto;flex-direction:row;flex-wrap:wrap;overflow:visible} .railsec{display:none} }
+@media(max-width:720px){ .kpis{grid-template-columns:repeat(2,1fr)} .main{padding:16px} }
+@media (prefers-reduced-motion:reduce){ *{transition:none!important;animation:none!important} }
+
+.report{display:none; animation:fade .2s ease}
+.report.on{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+
+/* ===== Badges / pills ===== */
+.pill{font-size:11px; padding:3px 9px; border-radius:20px; display:inline-block; white-space:nowrap; font-weight:600}
+.pill.green{background:var(--green-soft); color:var(--green)} .pill.amber{background:var(--amber-soft); color:var(--amber)}
+.pill.red{background:var(--red-soft); color:var(--red)} .pill.grey{background:var(--neutral-soft); color:var(--ink-soft)}
+.pill.brand{background:var(--brand-soft); color:var(--brand-ink)} .pill.violet{background:var(--violet-soft); color:var(--violet-ink)}
+.gate{border:1px dashed var(--line-strong); border-radius:12px; padding:18px; background:var(--raised); color:var(--ink-soft); font-size:12.5px; text-align:center}
+.gate b{color:var(--ink)}
+.gate .tag{display:inline-block; font-size:10px; letter-spacing:.6px; text-transform:uppercase; font-weight:700; color:var(--amber); background:var(--amber-soft); padding:3px 9px; border-radius:6px; margin-bottom:8px}
+
+/* ===== Tables ===== */
+table{width:100%; border-collapse:collapse; font-size:12.5px}
+th{text-align:left; font-weight:600; color:var(--ink-faint); font-size:10px; letter-spacing:.6px; text-transform:uppercase; padding:9px 9px; border-bottom:1px solid var(--line-strong); white-space:nowrap}
+td{padding:9px; border-bottom:1px solid var(--line); vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tbody tr:hover{background:var(--raised)}
+.rt{text-align:right}
+.tbl-wrap{overflow:auto}
+.avatar{width:26px;height:26px;border-radius:8px;flex:none;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;letter-spacing:.3px}
+.cflex{display:flex;align-items:center;gap:9px}
+
+/* ===== Charts ===== */
+.chart{width:100%; display:block}
+.chart text{fill:var(--ink-faint); font-size:10px; font-variant-numeric:tabular-nums}
+.chart .bar{transition:.15s} .chart .bar:hover{opacity:.82}
+.legend{display:flex; gap:14px; font-size:11px; color:var(--ink-soft); margin-top:8px; flex-wrap:wrap}
+.legend i{width:11px;height:3px;display:inline-block;border-radius:2px;margin-right:5px;vertical-align:middle}
+.legend .d{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:middle}
+.tipbox{position:fixed; pointer-events:none; background:var(--surface); border:1px solid var(--line-strong); color:var(--ink); font-size:11.5px; padding:8px 10px; border-radius:9px; opacity:0; transition:opacity .1s; z-index:90; white-space:nowrap; box-shadow:var(--shadow-lift)}
+.tipbox b{font-weight:600}
+
+/* ===== Misc blocks ===== */
+.statrow{display:grid; gap:12px; margin-bottom:16px}
+.ministat{border:1px solid var(--line); border-radius:12px; padding:14px 15px; background:var(--surface); position:relative; overflow:hidden}
+.ministat::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent,var(--brand))}
+.ministat .l{font-size:10px; letter-spacing:.8px; text-transform:uppercase; color:var(--ink-soft)}
+.ministat .v{font-size:23px; font-weight:700; margin-top:7px; color:var(--ink); letter-spacing:-.6px}
+.ministat .c{font-size:11px; color:var(--ink-faint); margin-top:5px}
+.ministat.click{cursor:pointer;transition:.14s} .ministat.click:hover{transform:translateY(-2px);box-shadow:var(--shadow-lift)}
+.ministat.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent) inset}
+.slider-row{margin:14px 0}
+.slabel{display:flex; justify-content:space-between; align-items:center; font-size:12.5px; color:var(--ink-soft); margin-bottom:7px}
+.slabel b{color:var(--ink)}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:6px;border-radius:6px;background:var(--surface2);border:1px solid var(--line);outline:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:var(--brand);border:2px solid var(--surface);cursor:pointer;box-shadow:0 2px 6px rgba(56,103,232,.4)}
+input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:var(--brand);border:2px solid var(--surface);cursor:pointer}
+.movetag{font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px}
+.movetag.m1{background:var(--amber-soft);color:var(--amber)} .movetag.m2{background:var(--green-soft);color:var(--green)}
+.upliftbox{border:1px solid var(--line); border-radius:12px; background:var(--raised); padding:14px 16px}
+.upliftbox .row{display:flex; justify-content:space-between; align-items:center; padding:7px 0; font-size:12.5px; color:var(--ink-soft); border-bottom:1px solid var(--line)}
+.upliftbox .row:last-child{border-bottom:none}
+.upliftbox .row b{color:var(--ink); font-weight:600}
+.gapbar{height:7px;border-radius:6px;background:var(--surface2);overflow:hidden;margin-top:6px;border:1px solid var(--line)}
+.gapbar>span{display:block;height:100%;background:linear-gradient(90deg,var(--brand),var(--violet))}
+.recocard{display:flex; gap:12px; align-items:flex-start; padding:13px 0; border-bottom:1px solid var(--line)}
+.recocard:last-child{border-bottom:none}
+.reconum{width:24px;height:24px;border-radius:50%;flex:none;background:var(--brand-soft);color:var(--brand-ink);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700}
+.reco-t{font-size:13px;font-weight:600;color:var(--ink)} .reco-d{font-size:11.5px;color:var(--ink-faint);margin-top:2px}
+.heat td{text-align:center;font-weight:600}
+.phases{display:inline-flex;gap:3px;align-items:center;vertical-align:middle}
+.ph{width:10px;height:10px;border-radius:50%;border:1.5px solid var(--violet)}
+.ph.on{background:var(--violet)} .mlabel{font-size:11px;color:var(--ink-soft);margin-left:5px}
+.acqlog{max-height:330px;overflow:auto}
+.footnote{font-size:11px;color:var(--ink-faint);margin-top:26px;text-align:center;line-height:1.7}
+details.client{border:1px solid var(--line);border-radius:11px;margin-bottom:8px;overflow:hidden;background:var(--surface)}
+details.client summary{list-style:none;cursor:pointer;padding:12px 15px;display:grid;grid-template-columns:1.7fr .9fr 1fr .9fr .9fr;gap:12px;align-items:center}
+details.client summary::-webkit-details-marker{display:none}
+details.client summary:hover{background:var(--raised)}
+.caret{transition:.2s;color:var(--ink-faint);display:inline-block}
+details[open] .caret{transform:rotate(90deg)}
+.cmeta{font-size:11px;color:var(--ink-faint)} .cmeta b{font-weight:600;color:var(--ink);font-size:13px}
+.cbody{padding:4px 15px 14px}
+::-webkit-scrollbar{width:9px;height:9px}::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:6px}::-webkit-scrollbar-track{background:transparent}
+.stepsvg .fan{opacity:.95}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="rail">
+    <div class="brand">
+      <div class="wordmark"><span class="wm-moon">MOON<svg class="wm-star" viewBox="0 0 24 24"><path d="M12 1.5 C13 8.5 15.5 11 22.5 12 C15.5 13 13 15.5 12 22.5 C11 15.5 8.5 13 1.5 12 C8.5 11 11 8.5 12 1.5Z" fill="currentColor"/></svg></span><span class="wm-tech">Tech</span></div>
+      <div class="sub">Client Intelligence 2.0</div>
+    </div>
+    <div class="railsec">Reports</div>
+    <button class="navitem on" data-r="overview"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>Overview &amp; ARPA</button>
+    <button class="navitem" data-r="build"><svg class="ic" viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M6 21V9l6-4 6 4v12"/><path d="M10 21v-6h4v6"/></svg>Brand Build</button>
+    <button class="navitem" data-r="growth"><svg class="ic" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg>Growth</button>
+    <button class="navitem" data-r="velocity"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>ROAS Velocity</button>
+    <button class="navitem" data-r="compare"><svg class="ic" viewBox="0 0 24 24"><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg>Compare Periods</button>
+    <button class="navitem" data-r="integration"><svg class="ic" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/><circle cx="19" cy="17" r="2"/></svg>Integration</button>
+    <button class="navitem" data-r="ledger"><svg class="ic" viewBox="0 0 24 24"><path d="M4 5h16v14H4z"/><path d="M4 9h16M9 5v14"/></svg>Client Ledger</button>
+    <div class="railsec">View</div>
+    <button class="navitem" id="themeItem"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"/></svg><span id="themeLbl">Dark mode</span></button>
+    <button class="navitem" id="ccyItem"><svg class="ic" viewBox="0 0 24 24"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg><span id="ccyLbl">Show in USD</span></button>
+  </aside>
+
+  <main class="main">
+    <div class="pagehead">
+      <div class="tt"><h1 id="pageTitle">Overview &amp; ARPA</h1><div class="psub" id="pageSub"></div></div>
+      <div class="headctl" id="headExtra"></div>
+    </div>
+
+    <div class="filterbar" id="filterbar">
+      <div class="seg" id="periodSeg">
+        <button data-p="month" class="on">Month</button><button data-p="quarter">Quarter</button><button data-p="year">Year</button><button data-p="all">All</button>
+      </div>
+      <select id="periodSel" class="field" style="min-width:150px"></select>
+      <div style="position:relative"><button class="btn" id="customBtn">📅 Custom</button>
+        <div id="customPop" class="custompop">
+          <div class="cprow"><label>From</label><input type="date" id="custFrom" class="field" style="flex:1"></div>
+          <div class="cprow"><label>To</label><input type="date" id="custTo" class="field" style="flex:1"></div>
+          <div style="display:flex;gap:8px;margin-top:8px"><button class="btn primary" id="custApply" style="flex:1">Apply</button><button class="btn" id="custClear" style="flex:1">Clear</button></div>
+        </div>
+      </div>
+      <div class="search-wrap"><svg viewBox="0 0 24 24" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg>
+        <input id="search" class="field" placeholder="Search brand or invoice…" autocomplete="off"><div id="typeahead" class="typeahead"></div></div>
+      <button class="btn" id="resetBtn">Reset</button>
+      <span class="grow"></span>
+      <label class="btn" for="fileInput">Upload CSV</label><input type="file" id="fileInput" accept=".csv">
+      <button class="btn" id="refreshBtn">Refresh</button>
+      <button class="btn dark" id="exportBtn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M8 11l4 4 4-4M4 19h16"/></svg>Export</button>
+    </div>
+
+    <div class="srcbar">
+      <span class="dot sample" id="srcDot"></span><span id="srcMsg">Loading…</span>
+      <span class="sep">·</span><span id="srcAsOf" class="hint"></span>
+      <span class="sep" id="trkSep">·</span><span id="trkMsg" class="hint"></span>
+      <span class="dq" id="dqToggle" style="display:none"></span>
+    </div>
+    <div class="dqpanel" id="dqPanel"></div>
+
+    <section class="report on" id="r-overview"></section>
+    <section class="report" id="r-build"></section>
+    <section class="report" id="r-growth"></section>
+    <section class="report" id="r-velocity"></section>
+    <section class="report" id="r-compare"></section>
+    <section class="report" id="r-integration"></section>
+    <section class="report" id="r-ledger"></section>
+
+    <div class="footnote" id="footnote"></div>
+  </main>
+</div>
+<div class="tipbox" id="tip"></div>
+<script>
+/* =========================================================================
+   DATA ENGINE — preserved verbatim from V1 (financial parity guaranteed).
+   ========================================================================= */
+const F = {
+  aed:n=>{ n=n||0; if((STATE.ccy||"AED")==="USD") return "$"+Math.round(n/CONFIG.AED_PER_USD).toLocaleString("en-US"); return "AED "+Math.round(n).toLocaleString("en-US"); },
+  usd:n=>"$"+Math.round(n||0).toLocaleString("en-US"),
+  ccyLbl:()=>(STATE.ccy||"AED")==="USD"?"$":"AED",
+  int:n=>(n||0).toLocaleString("en-US"),
+  pct:n=>(n>=0?"+":"")+n.toFixed(1)+"%",
+  date:d=>d?String(d.getMonth()+1).padStart(2,"0")+"/"+String(d.getDate()).padStart(2,"0")+"/"+d.getFullYear():"—",
+  ym:d=>d?d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0"):null,
+  ymLabel:k=>{const[y,m]=k.split("-");return new Date(y,m-1,1).toLocaleString("en-US",{month:"short"})+" "+y.slice(2)}
+};
+const parseDate=v=>{ if(!v)return null; v=String(v).trim(); if(!v||/^n\/?a$/i.test(v))return null;
+  let m=v.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/); if(m){let[_,a,b,y]=m;y=y.length===2?"20"+y:y;return new Date(+y,+a-1,+b);}
+  m=v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/); if(m)return new Date(+m[1],+m[2]-1,+m[3]);
+  const d=new Date(v); return isNaN(d)?null:d; };
+const parseAmt=v=>{ if(v==null)return 0; const n=parseFloat(String(v).replace(/[^0-9.\-]/g,"")); return isNaN(n)?0:n; };
+const parseMile=v=>{ const m=String(v||"").match(/milestone[\s\-]*([1-5])/i); return m?+m[1]:null; };
+const norm=s=>String(s||"").trim().toLowerCase().replace(/[\s\-]+/g," ");
+const HKEYS={
+  invoice:["invoice"], client:["client name"], brandCol:["brand name"], desc:["description"], brand:["brand"],
+  mile:["roas milestone","roas- milestone","roas-milestone"], invDate:["invoice date"],
+  terms:["payment terms"], due:["due date"], pastDue:["days past due"], total:["total"],
+  status:["invoice status"], amend:["ammendment details","amendment details"],
+  payMethod:["payment method"],
+  vat:["vat"], usd:["$ amount","amount $","usd amount","$amount"], refund:["refunds vat exclusive","refunds","refund","refund ($)","refunds ($)","refund $","refunds vat"],
+  payDate:["payment receipt date","payment recepit date","payment reciept date"],
+  daysToPay:["days between invoicing and payment"], today:["todays date","today's date"]
+};
+function buildMap(h){ const map={}, H=h.map(norm); for(const k in HKEYS) for(const c of HKEYS[k]){ const i=H.indexOf(norm(c)); if(i>=0){map[k]=h[i];break;} } return map; }
+let STATE={ rows:[], today:new Date(), source:"", srcKind:"sample", trkMsg:"", months:[], ledgerFilter:"all", ccy:"AED", dropped:new Set(), manualDropped:new Set(), tracker:[], churnedBrands:new Set(), unmatchedChurn:[], route:"overview", period:"", query:"", dq:[] };
+
+function usdNet(i){ let gross=i.usd||(i.total/CONFIG.AED_PER_USD); if(i.vatInc) gross=gross/(1+CONFIG.VAT_RATE);
+  const refund=i.refundUsd||(i.refundAed?i.refundAed/CONFIG.AED_PER_USD:0); return Math.max(0,gross-refund); }
+const normBrand=s=>String(s||"").toLowerCase().replace(/[^a-z0-9]/g,"");
+const tidy=s=>String(s||"").replace(/[‐-―−﹘﹣－]/g,"-").replace(/[   ]/g," ").replace(/\s+/g," ").trim();
+const shortName=n=>tidy(n).replace(/\s*(l\.?l\.?c\.?-?fz?|llc|fz llc|fze|trading company|company|general trading|- moontech|- mt)\b/gi,"").replace(/\s*-\s*/g," — ").replace(/\s+/g," ").trim()||tidy(n);
+const brandName=n=>{ const t=tidy(n),tl=t.toLowerCase();
+  for(const frag in (CONFIG.BRAND_OVERRIDES||{})) if(tl.includes(frag.toLowerCase())) return CONFIG.BRAND_OVERRIDES[frag];
+  let parts=t.split(/\s*-\s*/).map(s=>s.trim()).filter(Boolean).filter(p=>!/^(moontech|mt)$/i.test(p));
+  let b=parts.length>1?parts[parts.length-1]:(parts[0]||t); b=b.replace(/[\s,]+(MT|Moontech)$/i,"").trim();
+  return parts.length>1&&b?b:shortName(parts.join(" - ")||t); };
+const shortDesc=d=>d&&d.length>46?d.slice(0,44)+"…":(d||"");
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function normalizeRows(raw, headers){
+  const map=buildMap(headers), get=(r,k)=> map[k]!==undefined? r[map[k]] : "";
+  const rows=raw.map((r,idx)=>{
+    const status=String(get(r,"status")||"").trim();
+    const client=tidy(get(r,"client")), brandCell=tidy(get(r,"brandCol"));
+    const refundRaw=get(r,"refund"); const refundVal=parseAmt(refundRaw);
+    const refundIsUsd=/\$/.test(String(refundRaw))||!/aed/i.test(String(refundRaw));
+    const usdRaw=get(r,"usd");
+    return {
+      _row:idx+2, invoice:String(get(r,"invoice")||"").trim(), client,
+      brand: brandCell || brandName(client), brandFromSheet:!!brandCell,
+      desc:String(get(r,"desc")||"").trim(), isNew:/new brand/i.test(get(r,"brand")||""),
+      mile:parseMile(get(r,"mile")), invDate:parseDate(get(r,"invDate")), due:parseDate(get(r,"due")),
+      pastDue:parseAmt(get(r,"pastDue")), total:parseAmt(get(r,"total")), usd:parseAmt(usdRaw),
+      usdMissing: usdRaw==null||String(usdRaw).trim()==="",
+      refundUsd: refundVal&&refundIsUsd?refundVal:0, refundAed: refundVal&&!refundIsUsd?refundVal:0,
+      vatInc:/includ/i.test(String(get(r,"vat")||"")),
+      terms:String(get(r,"terms")||"").trim(), amend:String(get(r,"amend")||"").trim(), payMethod:String(get(r,"payMethod")||"").trim(),
+      daysToPay:parseAmt(get(r,"daysToPay")),
+      status, isPaid:/^paid$/i.test(status), isCancelled:/^cancelled$/i.test(status),
+      payDate:parseDate(get(r,"payDate")), todayRaw:get(r,"today")
+    };
+  }).filter(r=> r.client || r.invoice);
+  let today=null; for(const r of rows){ const d=parseDate(r.todayRaw); if(d){today=d;break;} }
+  if(!today){ for(const h of headers){ const d=parseDate(h); if(d){today=d;break;} } }
+  return {rows, today: today||new Date()};
+}
+function byClient(rows){
+  const m=new Map();
+  for(const r of rows){ const k=r.brand||r.client; if(!k)continue; if(!m.has(k))m.set(k,[]); m.get(k).push(r); }
+  const out=[];
+  for(const [name,invs] of m){
+    const paid=invs.filter(i=>i.isPaid);
+    const paidMiles=paid.map(i=>i.mile).filter(Boolean);
+    const anyMiles=invs.map(i=>i.mile).filter(Boolean);
+    const level=paidMiles.length?Math.max(...paidMiles):(anyMiles.length?Math.max(...anyMiles):null);
+    const totalPaid=paid.reduce((s,i)=>s+i.total,0);
+    const outstanding=invs.filter(i=>!i.isPaid&&!i.isCancelled).reduce((s,i)=>s+i.total,0);
+    const firstPaid=paid.filter(i=>i.invDate).sort((a,b)=>a.invDate-b.invDate)[0]||null;
+    const firstPaidPay=paid.filter(i=>i.payDate).sort((a,b)=>a.payDate-b.payDate)[0]||firstPaid;
+    const latestPaid=paid.filter(i=>i.invDate).sort((a,b)=>b.invDate-a.invDate)[0]||null;
+    out.push({name,invs,paid,hasPaid:paid.length>0,isNew:invs.some(i=>i.isNew),
+      entities:[...new Set(invs.map(i=>i.client).filter(Boolean))],
+      level, paidLevel: paidMiles.length?Math.max(...paidMiles):null,
+      totalPaid, outstanding, firstPaid, firstPaidPay, latestPaid});
+  }
+  return out;
+}
+function computeARPA(clients){
+  const inc=(CONFIG.ARPA_INCLUDE_BRANDS||[]).map(s=>s.toLowerCase());
+  const isAnom=c=>inc.includes(String(c.name).toLowerCase());
+  const rowsWork=[];
+  const qualifying=clients.filter(c=> c.hasPaid && (c.paidLevel||isAnom(c)));
+  const excluded=clients.filter(c=> c.hasPaid && !c.paidLevel && !isAnom(c)).length;
+  for(const c of qualifying){
+    const roasPaid=c.paid.filter(i=>i.mile);
+    const dropped=STATE.dropped.has(c.name);
+    let usd, basis, latest=null;
+    const relevant=c.paidLevel?roasPaid:c.paid;
+    const refundAmt=relevant.reduce((s,i)=>s+(i.refundUsd||(i.refundAed?i.refundAed/CONFIG.AED_PER_USD:0)),0);
+    if(!c.paidLevel){ usd=c.paid.reduce((s,i)=>s+usdNet(i),0); basis="Spend to date (CPL — included)"; }
+    else if(c.paidLevel<=2){ usd=roasPaid.reduce((s,i)=>s+usdNet(i),0); basis="ROAS spend to date"; }
+    else if(dropped){ const yr=STATE.today.getFullYear();
+      const ytd=roasPaid.filter(i=>{ const d=i.payDate||i.invDate; return d&&d.getFullYear()===yr; });
+      usd=(ytd.length?ytd:roasPaid).reduce((s,i)=>s+usdNet(i),0); basis="Dropped · YTD spend"; }
+    else { latest=roasPaid.filter(i=>i.invDate).sort((a,b)=>b.invDate-a.invDate)[0]||c.latestPaid;
+      usd=(latest?usdNet(latest):0)*12; basis="Latest paid × 12"; }
+    const churn=(STATE.churnedBrands&&STATE.churnedBrands.has(normBrand(c.name)));
+    rowsWork.push({name:c.name, level:c.paidLevel, basis, usd, latest, dropped, canDrop:c.paidLevel>2, refundAmt, churn});
+  }
+  const arpa=rowsWork.length? rowsWork.reduce((s,r)=>s+r.usd,0)/rowsWork.length : 0;
+  return {arpa, n:rowsWork.length, excluded, rows:rowsWork.sort((a,b)=>b.usd-a.usd)};
+}
+function monthKeysFrom(startISO,endDate){ const s=new Date(startISO), keys=[]; let y=s.getFullYear(),m=s.getMonth();
+  const ey=endDate.getFullYear(),em=endDate.getMonth();
+  while(y<ey||(y===ey&&m<=em)){ keys.push(y+"-"+String(m+1).padStart(2,"0")); m++; if(m>11){m=0;y++;} } return keys; }
+function revenueForMonth(rows,key){ return rows.filter(r=>r.isPaid&&F.ym(r.payDate)===key).reduce((s,r)=>s+r.total,0); }
+function newBrandAcquisitions(clients){ const out=[];
+  for(const c of clients){ const fp=c.firstPaidPay||c.firstPaid; const d=fp&&(fp.payDate||fp.invDate); if(c.isNew&&d) out.push({name:c.name,month:F.ym(d),date:d}); }
+  (CONFIG.REACQUIRED||[]).forEach(x=>{ const nb=s=>String(s).toLowerCase().replace(/[^a-z0-9]/g,"");
+    const c=clients.find(cl=>nb(cl.name)===nb(x.brand));
+    if(c){ const [y,m]=x.month.split("-").map(Number); out.push({name:c.name, month:x.month, date:new Date(y,m-1,15), reacquired:true}); } });
+  return out; }
+function filteredRows(){ const q=STATE.query; if(!q)return STATE.rows; const ql=q.toLowerCase();
+  return STATE.rows.filter(r=> r.brand.toLowerCase().includes(ql)||r.client.toLowerCase().includes(ql)||r.invoice.toLowerCase().startsWith(ql)); }
+function resolvePeriod(sel, today){
+  if(!sel||sel==="ALL") return {isAll:true, yearSel:null, inSel:()=>true, inPrev:()=>false, label:"Overall", prevLabel:"", end:today};
+  let m;
+  if((m=/^Y(\d{4})$/.exec(sel))){ const y=+m[1];
+    return {isAll:false, yearSel:y, inSel:d=>d&&d.getFullYear()===y, inPrev:d=>d&&d.getFullYear()===y-1, label:String(y), prevLabel:String(y-1), end:new Date(y,11,31)}; }
+  if((m=/^Q(\d{4})-([1-4])$/.exec(sel))){ const y=+m[1],q=+m[2], sM=(q-1)*3;
+    const inQ=(dy,dm,qy,qq)=>dy===qy&&Math.floor(dm/3)+1===qq; const py=q===1?y-1:y, pq=q===1?4:q-1;
+    return {isAll:false, yearSel:null, inSel:d=>d&&inQ(d.getFullYear(),d.getMonth(),y,q), inPrev:d=>d&&inQ(d.getFullYear(),d.getMonth(),py,pq),
+      label:`Q${q} ${y}`, prevLabel:`Q${pq} ${py}`, end:new Date(y,sM+3,0)}; }
+  if((m=/^C:(\d{4}-\d{2}-\d{2}):(\d{4}-\d{2}-\d{2})$/.exec(sel))){ const s=new Date(m[1]),e=new Date(m[2]); e.setHours(23,59,59);
+    const span=e-s; const ps=new Date(s-span-86400000), pe=new Date(s-86400000);
+    return {isAll:false, yearSel:null, inSel:d=>d&&d>=s&&d<=e, inPrev:d=>d&&d>=ps&&d<=pe, label:`${F.date(s)}–${F.date(e)}`, prevLabel:"prior range", end:e}; }
+  const [y,mm]=sel.split("-").map(Number); const prev=F.ym(new Date(y,mm-2,1));
+  return {isAll:false, yearSel:null, inSel:d=>d&&F.ym(d)===sel, inPrev:d=>d&&F.ym(d)===prev, label:F.ymLabel(sel), prevLabel:F.ymLabel(prev), end:new Date(y,mm,0)};
+}
+/* ---- Tracker ---- */
+const TKEYS={ brand:["brand name"], tier:["client tier"], status:["status"], integration:["dashboard integration"], milestone:["current milestone"],
+  daysIntegrate:["days for integration"], intDone:["integration completion date"],
+  timeCampaign:["days from payment to campaign","days from payment to c"], firstAd:["first ad live date","first ad live","first ad date"],
+  churnDate:["churn date"], signMonth:["month of signing"] };
+function buildTMap(h){ const map={}, H=h.map(norm); for(const k in TKEYS) for(const c of TKEYS[k]){ const i=H.indexOf(norm(c)); if(i>=0){map[k]=h[i];break;} } return map; }
+function parseDaysNum(v){ const m=String(v||"").match(/(-?\d+(?:\.\d+)?)/); return m?parseFloat(m[1]):null; }
+function ingestTracker(data, fields){
+  const map=buildTMap(fields), get=(r,k)=> map[k]!==undefined? r[map[k]] : "";
+  const rows=data.map(r=>({ brand: tidy(get(r,"brand")), tier:String(get(r,"tier")||"").trim(), status:String(get(r,"status")||"").trim(),
+    integration:String(get(r,"integration")||"").trim(), milestone:parseDaysNum(get(r,"milestone")),
+    daysIntegrate:parseDaysNum(get(r,"daysIntegrate")), timeCampaign:parseDaysNum(get(r,"timeCampaign")),
+    firstAd:parseDate(get(r,"firstAd")), churnDate:String(get(r,"churnDate")||"").trim(), signMonth:String(get(r,"signMonth")||"").trim()
+  })).filter(r=> r.brand && !/^average$/i.test(r.brand));
+  STATE.tracker=rows; STATE.churnedBrands=new Set(rows.filter(r=>/churn/i.test(r.status)).map(r=>normBrand(r.brand))); applyChurnDrops();
+}
+function applyChurnDrops(){
+  const receivableBrands=new Set(STATE.rows.map(r=>normBrand(r.brand)));
+  STATE.unmatchedChurn=[...STATE.churnedBrands].filter(nb=> !receivableBrands.has(nb)).map(nb=>(STATE.tracker.find(t=>normBrand(t.brand)===nb)||{}).brand||nb);
+  STATE.dropped=new Set([...STATE.manualDropped]);
+  STATE.rows.forEach(r=>{ if(STATE.churnedBrands.has(normBrand(r.brand))) STATE.dropped.add(r.brand); });
+}
+function loadTracker(){ if(!CONFIG.TRACKER_CSV_URL){ STATE.trkMsg="Tracker: not configured"; return; }
+  Papa.parse(CONFIG.TRACKER_CSV_URL,{download:true,header:true,skipEmptyLines:true,
+    complete:res=>{ if(res.data&&res.data.length){ ingestTracker(res.data,res.meta.fields); STATE.trkMsg="Tracker: live · "+STATE.tracker.length+" brands"; render(); } else { STATE.trkMsg="Tracker: empty"; render(); } },
+    error:()=>{ STATE.trkMsg="Tracker: unavailable"; render(); } });
+}
+/* ---- Brand Build scenario (verbatim) ---- */
+let BB_CTX=null, BB_PROMOTE1=0, BB_PROMOTE2=0, BB_FILTER=null;
+function bbContext(A){ const T=CONFIG.ARPA_TARGET; const M3VAL=CONFIG.M3_MONTHLY*12; const all=A.rows;
+  const baseAvg=all.length?all.reduce((s,r)=>s+r.usd,0)/all.length:0;
+  const promotable=all.filter(r=>!r.dropped&&r.level&&r.level<3);
+  const m1=promotable.filter(r=>r.level===1); const m2=promotable.filter(r=>r.level===2);
+  const active=all.filter(r=>!r.dropped&&r.level); const below=active.filter(r=>r.usd<T);
+  return {T,M3VAL,all,baseAvg,active,below,m1,m2, stalledM3:below.filter(r=>r.level>=3),
+    m3plusAvg:(()=>{const m=all.filter(r=>!r.dropped&&r.level>=3);return m.length?m.reduce((s,r)=>s+r.usd,0)/m.length:M3VAL;})()}; }
+function pools(ctx){ return {m1:ctx.m1.slice().sort((a,b)=>b.usd-a.usd), m2:ctx.m2.slice().sort((a,b)=>b.usd-a.usd)}; }
+function projectedARPA(ctx,n1,n2){ const {m1,m2}=pools(ctx); const promote=new Set([...m1.slice(0,n1),...m2.slice(0,n2)].map(r=>r.name));
+  const arr=ctx.all.map(r=> promote.has(r.name)? ctx.M3VAL : r.usd); return arr.length? arr.reduce((s,v)=>s+v,0)/arr.length : 0; }
+function periodMetrics(sel){ const P=resolvePeriod(sel,STATE.today); const rows=STATE.rows, clients=byClient(rows);
+  const acq=newBrandAcquisitions(clients).filter(a=>P.inSel(a.date)).length;
+  const rev=rows.filter(r=>r.isPaid&&P.inSel(r.payDate)).reduce((s,r)=>s+r.total,0);
+  const asAt=rows.filter(r=>{const d=r.payDate||r.invDate;return !d||d<=P.end;}); const A=computeARPA(byClient(asAt));
+  const cashRows=rows.filter(r=>r.isPaid&&P.inSel(r.payDate));
+  const avgSpend=acqCohortSpend(clients,P);
+  return {label:P.label, acq, rev, arpa:A.arpa, arpaN:A.n, avgSpend, P}; }
+function acqCohortSpend(clients,P){ const cohort=clients.filter(c=>{const fp=c.firstPaidPay||c.firstPaid;const d=fp&&(fp.payDate||fp.invDate);return c.isNew&&d&&P.inSel(d);});
+  if(!cohort.length)return 0; const cash=cohort.reduce((s,c)=>s+c.paid.filter(i=>P.inSel(i.payDate)).reduce((a,i)=>a+i.total,0),0); return cash/cohort.length; }
+
+/* =========================================================================
+   CHART HELPERS (inline SVG, theme-driven via CSS vars)
+   ========================================================================= */
+const TIP=document.getElementById("tip");
+function tipShow(html,e){ TIP.innerHTML=html; TIP.style.opacity=1; tipMove(e); }
+function tipMove(e){ const p=12; let x=e.clientX+p, y=e.clientY+p; const w=TIP.offsetWidth,h=TIP.offsetHeight;
+  if(x+w>innerWidth-8)x=e.clientX-w-p; if(y+h>innerHeight-8)y=e.clientY-h-p; TIP.style.left=x+"px"; TIP.style.top=y+"px"; }
+function tipHide(){ TIP.style.opacity=0; }
+function cvar(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+function niceMax(v){ if(v<=0)return 1; const p=Math.pow(10,Math.floor(Math.log10(v))); const f=v/p; const n=f<=1?1:f<=2?2:f<=5?5:10; return n*p; }
+
+// dual-axis bars + line
+function chartDualAxis(el, cats, bars, line, opt){
+  opt=opt||{}; const W=760,H=opt.h||280, pl=54,pr=46,pt=14,pb=34, iw=W-pl-pr, ih=H-pt-pb;
+  const bMax=niceMax(Math.max(1,...bars)), lMax=niceMax(Math.max(1,...line));
+  const bw=iw/cats.length, barW=Math.min(34,bw*.5);
+  let g=`<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">`;
+  for(let i=0;i<=4;i++){ const y=pt+ih*i/4; g+=`<line x1="${pl}" y1="${y}" x2="${W-pr}" y2="${y}" stroke="${cvar('--grid')}"/>`;
+    g+=`<text x="${pl-8}" y="${y+3}" text-anchor="end">${F.int(Math.round(bMax*(1-i/4)))}</text>`;
+    g+=`<text x="${W-pr+8}" y="${y+3}" text-anchor="start">${Math.round(lMax*(1-i/4))}</text>`; }
+  cats.forEach((c,i)=>{ const x=pl+bw*i+bw/2; const bh=ih*(bars[i]/bMax); const partial=opt.partialIdx===i;
+    g+=`<rect class="bar" x="${x-barW/2}" y="${pt+ih-bh}" width="${barW}" height="${Math.max(0,bh)}" rx="4" fill="${cvar('--brand')}" ${partial?'opacity="0.5"':''} data-i="${i}"/>`;
+    g+=`<text x="${x}" y="${H-12}" text-anchor="middle">${esc(c)}</text>`; });
+  let pts=cats.map((c,i)=>{ const x=pl+bw*i+bw/2; const y=pt+ih-ih*(line[i]/lMax); return [x,y]; });
+  g+=`<polyline fill="none" stroke="${cvar('--violet')}" stroke-width="2.4" points="${pts.map(p=>p.join(",")).join(" ")}"/>`;
+  pts.forEach((p,i)=>{ g+=`<circle cx="${p[0]}" cy="${p[1]}" r="3.4" fill="${cvar('--violet')}" data-i="${i}" class="pt"/>`; });
+  // hover zones
+  cats.forEach((c,i)=>{ const x=pl+bw*i; g+=`<rect x="${x}" y="${pt}" width="${bw}" height="${ih}" fill="transparent" data-h="${i}"/>`; });
+  g+=`</svg>`; el.innerHTML=g;
+  const svg=el.querySelector("svg");
+  svg.querySelectorAll("[data-h]").forEach(z=>{ const i=+z.dataset.h;
+    z.addEventListener("mousemove",e=>tipShow(`<b>${esc(cats[i])}</b><br>${opt.barLbl||'Value'}: ${(opt.barFmt||F.int)(bars[i])}<br>${opt.lineLbl||'Line'}: ${F.int(line[i])}${opt.partialIdx===i?'<br><i>partial month</i>':''}`,e));
+    z.addEventListener("mouseleave",tipHide); });
+}
+// grouped bars for arbitrary series
+function chartBars(el, cats, series, opt){
+  opt=opt||{}; const W=760,H=opt.h||260, pl=52,pr=16,pt=14,pb=34, iw=W-pl-pr, ih=H-pt-pb;
+  const all=series.flatMap(s=>s.data); const mx=niceMax(Math.max(1,...all));
+  const gw=iw/cats.length, n=series.length, bw=Math.min(40,(gw*.64)/n);
+  let g=`<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">`;
+  for(let i=0;i<=4;i++){ const y=pt+ih*i/4; g+=`<line x1="${pl}" y1="${y}" x2="${W-pr}" y2="${y}" stroke="${cvar('--grid')}"/>`;
+    g+=`<text x="${pl-8}" y="${y+3}" text-anchor="end">${(opt.yFmt||F.int)(Math.round(mx*(1-i/4)))}</text>`; }
+  cats.forEach((c,ci)=>{ const gx=pl+gw*ci+gw/2; const groupW=bw*n;
+    series.forEach((s,si)=>{ const x=gx-groupW/2+bw*si; const bh=ih*(s.data[ci]/mx);
+      g+=`<rect class="bar" x="${x}" y="${pt+ih-bh}" width="${bw-3}" height="${Math.max(0,bh)}" rx="4" fill="${s.color}" data-c="${ci}" data-s="${si}"/>`;
+      if(opt.valueLabels){ g+=`<text x="${x+(bw-3)/2}" y="${pt+ih-bh-5}" text-anchor="middle" font-weight="600" fill="${cvar('--ink')}">${(opt.yFmt||F.int)(s.data[ci])}</text>`; } });
+    g+=`<text x="${gx}" y="${H-12}" text-anchor="middle">${esc(c)}</text>`; });
+  g+=`</svg>`; el.innerHTML=g;
+  el.querySelectorAll("[data-c]").forEach(z=>{ const ci=+z.dataset.c, si=+z.dataset.s;
+    z.addEventListener("mousemove",e=>tipShow(`<b>${esc(cats[ci])}</b><br>${esc(series[si].name)}: ${(opt.yFmt||F.int)(series[si].data[ci])}`,e));
+    z.addEventListener("mouseleave",tipHide); });
+}
+// multi-line
+function chartLines(el, cats, series, opt){
+  opt=opt||{}; const W=760,H=opt.h||260, pl=52,pr=16,pt=14,pb=34, iw=W-pl-pr, ih=H-pt-pb;
+  const mx=niceMax(Math.max(1,...series.flatMap(s=>s.data)));
+  let g=`<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">`;
+  for(let i=0;i<=4;i++){ const y=pt+ih*i/4; g+=`<line x1="${pl}" y1="${y}" x2="${W-pr}" y2="${y}" stroke="${cvar('--grid')}"/>`;
+    g+=`<text x="${pl-8}" y="${y+3}" text-anchor="end">${(opt.yFmt||F.int)(Math.round(mx*(1-i/4)))}</text>`; }
+  const step=iw/Math.max(1,cats.length-1);
+  cats.forEach((c,i)=>{ if(cats.length<=14||i%2===0) g+=`<text x="${pl+step*i}" y="${H-12}" text-anchor="middle">${esc(c)}</text>`; });
+  series.forEach(s=>{ const pts=s.data.map((v,i)=>[pl+step*i, pt+ih-ih*(v/mx)]);
+    g+=`<polyline fill="none" stroke="${s.color}" stroke-width="2.4" ${s.dash?'stroke-dasharray="5 4"':''} points="${pts.map(p=>p.join(",")).join(" ")}"/>`;
+    pts.forEach((p,i)=>g+=`<circle cx="${p[0]}" cy="${p[1]}" r="3" fill="${s.color}" data-s="${esc(s.name)}" data-i="${i}"/>`); });
+  g+=`</svg>`; el.innerHTML=g;
+  el.querySelectorAll("circle").forEach(z=>{ const i=+z.dataset.i;
+    z.addEventListener("mousemove",e=>tipShow(`<b>${esc(cats[i])}</b><br>${esc(z.dataset.s)}: ${(opt.yFmt||F.int)(series.find(s=>s.name===z.dataset.s).data[i])}`,e));
+    z.addEventListener("mouseleave",tipHide); });
+}
+// donut
+function chartDonut(el, items, opt){
+  opt=opt||{}; const S=190, cx=S/2, cy=S/2, r=70, rin=46; const total=items.reduce((s,i)=>s+i.value,0)||1;
+  let a=-Math.PI/2, g=`<svg class="chart" viewBox="0 0 ${S} ${S}" style="max-width:200px">`;
+  items.forEach(it=>{ const ang=it.value/total*Math.PI*2; const a2=a+ang;
+    const x1=cx+r*Math.cos(a), y1=cy+r*Math.sin(a), x2=cx+r*Math.cos(a2), y2=cy+r*Math.sin(a2);
+    const xi2=cx+rin*Math.cos(a2), yi2=cy+rin*Math.sin(a2), xi1=cx+rin*Math.cos(a), yi1=cy+rin*Math.sin(a);
+    const large=ang>Math.PI?1:0;
+    g+=`<path d="M${x1} ${y1} A${r} ${r} 0 ${large} 1 ${x2} ${y2} L${xi2} ${yi2} A${rin} ${rin} 0 ${large} 0 ${xi1} ${yi1} Z" fill="${it.color}" data-n="${esc(it.label)}" data-v="${it.value}"/>`;
+    a=a2; });
+  g+=`<text x="${cx}" y="${cy-2}" text-anchor="middle" font-size="22" font-weight="700" fill="${cvar('--ink')}">${opt.centerNum!=null?opt.centerNum:total}</text>`;
+  g+=`<text x="${cx}" y="${cy+15}" text-anchor="middle" font-size="9" fill="${cvar('--ink-faint')}">${esc(opt.centerLbl||'total')}</text></svg>`;
+  el.innerHTML=g;
+  el.querySelectorAll("path").forEach(z=>{ z.addEventListener("mousemove",e=>tipShow(`<b>${esc(z.dataset.n)}</b><br>${z.dataset.v} · ${Math.round(z.dataset.v/total*100)}%`,e)); z.addEventListener("mouseleave",tipHide); });
+}
+// horizontal bars
+function chartHBars(el, items, opt){ opt=opt||{}; const mx=Math.max(1,...items.map(i=>i.value));
+  el.innerHTML=items.map(it=>`<div style="display:flex;align-items:center;gap:10px;margin:8px 0">
+    <div style="width:${opt.labelW||120}px;flex:none;font-size:12px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(it.label)}</div>
+    <div style="flex:1;height:16px;border-radius:7px;background:var(--surface2);overflow:hidden"><span style="display:block;height:100%;width:${it.value/mx*100}%;background:${it.color||'linear-gradient(90deg,var(--brand),var(--violet))'}"></span></div>
+    <div style="width:${opt.valW||72}px;flex:none;text-align:right;font-size:12px;font-weight:600" class="mono">${(opt.fmt||F.int)(it.value)}</div></div>`).join("");
+}
+// bubble (spend x growth)
+function chartBubble(el, pts, opt){ opt=opt||{}; const W=760,H=260,pl=50,pr=16,pt=14,pb=34,iw=W-pl-pr,ih=H-pt-pb;
+  const xs=pts.map(p=>p.x).filter(v=>v>0); const xmin=Math.min(...xs,1), xmax=Math.max(...xs,10);
+  const lx=v=>Math.log10(Math.max(1,v)); const lxmin=lx(xmin),lxmax=lx(xmax)||1;
+  const ymax=Math.max(10,...pts.map(p=>Math.abs(p.y))); const smax=Math.max(1,...pts.map(p=>p.size));
+  let g=`<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">`;
+  for(let i=0;i<=4;i++){ const y=pt+ih*i/4; const val=Math.round(ymax-(2*ymax)*i/4); g+=`<line x1="${pl}" y1="${y}" x2="${W-pr}" y2="${y}" stroke="${cvar('--grid')}"/><text x="${pl-8}" y="${y+3}" text-anchor="end">${val}%</text>`; }
+  g+=`<line x1="${pl}" y1="${pt+ih/2}" x2="${W-pr}" y2="${pt+ih/2}" stroke="${cvar('--line-strong')}" stroke-dasharray="3 3"/>`;
+  pts.forEach(p=>{ const x=pl+iw*((lx(p.x)-lxmin)/(lxmax-lxmin||1)); const y=pt+ih/2-(p.y/ymax)*(ih/2); const r=5+12*Math.sqrt(p.size/smax);
+    g+=`<circle cx="${x}" cy="${y}" r="${r}" fill="${p.color}" opacity="0.72" stroke="${p.color}" data-n="${esc(p.label)}" data-x="${Math.round(p.x)}" data-y="${p.y.toFixed(0)}"/>`; });
+  g+=`<text x="${pl}" y="${H-10}">low spend</text><text x="${W-pr}" y="${H-10}" text-anchor="end">high spend (log)</text></svg>`;
+  el.innerHTML=g;
+  el.querySelectorAll("circle").forEach(z=>{ z.addEventListener("mousemove",e=>tipShow(`<b>${esc(z.dataset.n)}</b><br>spend: ${F.usd(z.dataset.x)} net<br>MoM: ${z.dataset.y}%`,e)); z.addEventListener("mouseleave",tipHide); });
+}
+// waterfall
+function chartWaterfall(el, steps, opt){ opt=opt||{}; const W=760,H=300,pl=58,pr=16,pt=20,pb=52,iw=W-pl-pr,ih=H-pt-pb;
+  let cum=0; const vals=[]; let lo=0,hi=0; steps.forEach(s=>{ const start=s.total?0:cum; const end=s.total?s.value:cum+s.value; vals.push({start,end,s}); cum=s.total?s.value:end; lo=Math.min(lo,start,end); hi=Math.max(hi,start,end); });
+  const mx=niceMax(hi); const bw=iw/steps.length;
+  let g=`<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">`;
+  for(let i=0;i<=4;i++){ const y=pt+ih*i/4; g+=`<line x1="${pl}" y1="${y}" x2="${W-pr}" y2="${y}" stroke="${cvar('--grid')}"/><text x="${pl-8}" y="${y+3}" text-anchor="end">${(opt.fmt||F.usd)(Math.round(mx*(1-i/4)))}</text>`; }
+  vals.forEach((v,i)=>{ const x=pl+bw*i+bw*.2; const w=bw*.6; const y1=pt+ih-ih*(v.end/mx), y0=pt+ih-ih*(v.start/mx);
+    const up=v.end>=v.start; const col=v.s.total?cvar('--brand'):(up?cvar('--green'):cvar('--red'));
+    g+=`<rect x="${x}" y="${Math.min(y0,y1)}" width="${w}" height="${Math.max(2,Math.abs(y1-y0))}" rx="3" fill="${col}" data-n="${esc(v.s.label)}" data-v="${v.s.total?v.s.value:v.s.value}"/>`;
+    g+=`<text x="${x+w/2}" y="${Math.min(y0,y1)-6}" text-anchor="middle" font-weight="600" fill="${cvar('--ink')}">${v.s.total?(opt.fmt||F.usd)(v.s.value):(v.s.value>=0?'+':'')+(opt.fmt||F.usd)(v.s.value)}</text>`;
+    const words=String(v.s.label).split(" "); g+=`<text x="${x+w/2}" y="${H-30}" text-anchor="middle">${esc(words.slice(0,2).join(" "))}</text>`;
+    if(words.length>2)g+=`<text x="${x+w/2}" y="${H-18}" text-anchor="middle">${esc(words.slice(2).join(" "))}</text>`; });
+  g+=`</svg>`; el.innerHTML=g; }
+
+function moonPhases(level){ let s='<span class="phases">'; for(let i=1;i<=5;i++)s+=`<span class="ph ${level&&i<=level?'on':''}"></span>`; s+=`</span><span class="mlabel">${level?("M"+level):"—"}</span>`; return s; }
+function avatarColor(name){ const pal=['#3867E8','#6252C8','#168362','#B07A17','#C74858','#2850C8','#8293B2']; let h=0; for(let i=0;i<name.length;i++)h=(h*31+name.charCodeAt(i))>>>0; return pal[h%pal.length]; }
+function initials(name){ const w=name.replace(/[^A-Za-z0-9 ]/g,'').trim().split(/\s+/); return ((w[0]||'')[0]||'')+((w[1]||'')[0]||''); }
+function chip(cur,prev,invert){ if(prev==null||!isFinite(prev))return ''; if(!prev)return `<span class="chip flat">new</span>`;
+  const p=(cur-prev)/prev*100; const good=invert? p<0 : p>=0; return `<span class="chip ${good?'up':'down'}">${F.pct(p)}</span>`; }
+
+/* =========================================================================
+   SOURCE LOADING
+   ========================================================================= */
+function setStatus(kind,msg){ STATE.srcKind=kind; const d=document.getElementById("srcDot"); if(d)d.className="dot "+kind; const m=document.getElementById("srcMsg"); if(m)m.textContent=msg; }
+function buildPeriodOptions(){ const sel=document.getElementById("periodSel"); if(!sel)return; const mode=STATE.periodMode||"month";
+  const yrs=[...new Set(STATE.rows.flatMap(r=>[r.invDate,r.payDate]).filter(Boolean).map(d=>d.getFullYear()))].sort();
+  let opts="";
+  if(mode==="all"){ opts=`<option value="ALL">Overall</option>`; }
+  else if(mode==="year"){ yrs.forEach(y=>opts+=`<option value="Y${y}">${y}</option>`); }
+  else if(mode==="quarter"){ yrs.forEach(y=>{for(let q=1;q<=4;q++){const s=new Date(y,(q-1)*3,1); if(s<=STATE.today)opts+=`<option value="Q${y}-${q}">Q${q} ${y}</option>`;}}); }
+  else { monthKeysFrom(CONFIG.ACQUISITION_START,STATE.today).forEach(k=>opts+=`<option value="${k}">${F.ymLabel(k)}</option>`); }
+  sel.innerHTML=opts; sel.style.display=mode==="all"?"none":"";
+  // default selection
+  if(mode==="month"){ const cur=F.ym(STATE.today); sel.value=[...sel.options].some(o=>o.value===cur)?cur:sel.options[sel.options.length-1].value; }
+  else if(mode==="year"){ sel.value="Y"+(yrs[yrs.length-1]||STATE.today.getFullYear()); }
+  else if(mode==="quarter"){ sel.value=sel.options[sel.options.length-1].value; }
+  else sel.value="ALL";
+  STATE.period=sel.value;
+}
+function ingest(data,fields,src,kind){ const {rows,today}=normalizeRows(data,fields||Object.keys(data[0]||{}));
+  if(!rows.length){ setStatus("err","No rows found — check the sheet/tab and headers."); return; }
+  STATE.rows=rows; STATE.today=today; STATE.source=src; applyChurnDrops();
+  setStatus(kind==="live"?"live":"sample",src+" · "+rows.length+" rows"); buildPeriodOptions(); render(); }
+function loadFromSheet(isRefresh){ const url=activeUrl();
+  if(!url){ loadSample(true,{kind:"err",msg:"No sheet URL set — showing sample.",detail:"Paste your published CSV link into SHEET_CSV_URL."}); return; }
+  setStatus("sample","Fetching sheet…");
+  if(/\/edit/.test(url)||(!/output=csv/.test(url)&&!/tqx=out:csv/.test(url))){ loadSample(true,{kind:"err",msg:"That link isn't a CSV export — showing sample.",detail:"URL must end in output=csv."}); return; }
+  Papa.parse(url,{download:true,header:true,skipEmptyLines:true,
+    complete:res=>{ if(!res.data||!res.data.length){ loadSample(true,{kind:"err",msg:"Sheet reached, no rows — showing SAMPLE.",detail:"Wrong tab published?"}); return; }
+      const heads=(res.meta.fields||[]).map(norm);
+      if(!heads.includes(norm("client name"))&&!heads.includes(norm("invoice"))){ loadSample(true,{kind:"err",msg:"Columns don't look right — showing SAMPLE.",detail:"Got: "+(res.meta.fields||[]).slice(0,6).join(" | ")}); return; }
+      ingest(res.data,res.meta.fields,"Live · Google Sheet","live"); },
+    error:err=>{ loadSample(true,{kind:"err",msg:"Couldn't reach the sheet — showing SAMPLE (not live).",detail:"Not published, or published as web page not CSV. "+((err&&err.message)||"network/CORS")}); } });
+}
+window.addEventListener("DOMContentLoaded",()=>{ setupControls(); setupNav(); setupTheme(); loadFromSheet(false); loadTracker();
+  if(CONFIG.REFRESH_SECONDS>0) setInterval(()=>{loadFromSheet(true);loadTracker();},CONFIG.REFRESH_SECONDS*1000); });
+</script>
+<script>
+/* =========================================================================
+   DATA QUALITY + SHARED CONTEXT
+   ========================================================================= */
+function buildDQ(){ const dq=[]; const rows=STATE.rows;
+  const ids={}; rows.forEach(r=>{ if(r.invoice){ids[r.invoice]=(ids[r.invoice]||0)+1;} });
+  const dupes=Object.keys(ids).filter(k=>ids[k]>1); if(dupes.length)dq.push(`${dupes.length} duplicate invoice ID(s): ${dupes.slice(0,5).join(", ")}${dupes.length>5?"…":""}`);
+  const noBrand=rows.filter(r=>!r.brand).length; if(noBrand)dq.push(`${noBrand} row(s) with no brand name`);
+  const usdFallback=rows.filter(r=>r.usdMissing&&r.mile).length; if(usdFallback)dq.push(`${usdFallback} ROAS invoice(s) with no $ Amount — using Total ÷ ${CONFIG.AED_PER_USD} fallback`);
+  if(STATE.unmatchedChurn.length)dq.push(`${STATE.unmatchedChurn.length} churned tracker brand(s) not matched in receivables (not auto-dropped): ${STATE.unmatchedChurn.slice(0,4).join(", ")}`);
+  const recvNames=new Set(rows.map(r=>normBrand(r.brand))); const trkUnmatched=STATE.tracker.filter(t=>!recvNames.has(normBrand(t.brand)));
+  if(trkUnmatched.length)dq.push(`${trkUnmatched.length} tracker brand(s) with no receivables match`);
+  const negAd=STATE.tracker.filter(t=>t.firstAd&&false).length;
+  const reacq=(CONFIG.REACQUIRED||[]).length; if(reacq)dq.push(`${reacq} approved re-acquisition(s) counted (JustHype 2026-07)`);
+  if(STATE.srcKind!=="live")dq.push(`Source is ${STATE.srcKind.toUpperCase()} — figures are not live`);
+  STATE.dq=dq;
+  const t=document.getElementById("dqToggle"); if(t){ if(dq.length){ t.style.display=""; t.textContent=`⚠ Data quality (${dq.length})`; } else t.style.display="none"; }
+}
+function computeContext(){
+  const rows=filteredRows(), clients=byClient(rows), today=STATE.today;
+  const P=resolvePeriod(STATE.period, today);
+  const cashSel=rows.filter(r=>r.isPaid&&P.inSel(r.payDate)), cashPrev=rows.filter(r=>r.isPaid&&P.inPrev(r.payDate));
+  const rev=cashSel.reduce((s,r)=>s+r.total,0), revPrev=cashPrev.reduce((s,r)=>s+r.total,0);
+  const billSel=rows.filter(r=>P.inSel(r.invDate)), billPrev=rows.filter(r=>P.inPrev(r.invDate));
+  const sum=a=>a.reduce((s,r)=>s+r.total,0);
+  const invoicedRows=billSel.filter(r=>!r.isCancelled), paidRows=billSel.filter(r=>r.isPaid),
+        unpaidRows=billSel.filter(r=>!r.isPaid&&!r.isCancelled), cancRows=billSel.filter(r=>r.isCancelled);
+  // open A/R as-of (all history)
+  const openAsOf=rows.filter(r=>!r.isPaid&&!r.isCancelled&&(!r.invDate||r.invDate<=P.end));
+  const overdue=openAsOf.filter(r=> r.due? r.due<today : (r.pastDue>0));
+  const acq=newBrandAcquisitions(clients); const acqSel=acq.filter(a=>P.inSel(a.date)), acqPrev=acq.filter(a=>P.inPrev(a.date));
+  const asAtRows=rows.filter(r=>{const d=r.payDate||r.invDate;return !d||d<=P.end;});
+  const A=computeARPA(byClient(asAtRows));
+  const prevEnd=P.isAll?null:new Date(P.end.getFullYear(),P.end.getMonth()-(P.yearSel?0:1),P.end.getDate());
+  const APrev=prevEnd?computeARPA(byClient(rows.filter(r=>{const d=r.payDate||r.invDate;return !d||d<=prevEnd;}))):null;
+  const activeBrands=byClient(asAtRows).filter(c=>c.hasPaid&&c.paidLevel&&!STATE.dropped.has(c.name)).length;
+  return {rows,clients,today,P,cashSel,rev,revPrev,sum,invoicedRows,paidRows,unpaidRows,cancRows,openAsOf,overdue,acq,acqSel,acqPrev,A,APrev,activeBrands,
+    totalInvoiced:sum(invoicedRows),totalPaid:sum(paidRows),totalUnpaid:sum(unpaidRows),totalCanc:sum(cancRows),
+    openAR:sum(openAsOf),overdueAR:sum(overdue)};
+}
+
+/* =========================================================================
+   KPI + helpers
+   ========================================================================= */
+const IC={ cash:'<path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>',
+  arpa:'<path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/>', users:'<circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/>',
+  bill:'<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h8M8 11h8M8 15h5"/>', tag:'<path d="M3 11l8-8 10 10-8 8z"/><circle cx="7.5" cy="7.5" r="1.5"/>',
+  clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', rocket:'<path d="M5 15c-2 1-3 5-3 5s4-1 5-3M9 11a9 9 0 0 1 9-9 9 9 0 0 1-9 9l-3 1-1 1z"/>',
+  alert:'<path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17v.5"/>', heart:'<path d="M20 8a4 4 0 0 0-7-2 4 4 0 0 0-7 2c0 5 7 9 7 9s7-4 7-9z"/>',
+  play:'<path d="M5 3l14 9-14 9z"/>', block:'<circle cx="12" cy="12" r="9"/><path d="M6 6l12 12"/>' };
+function kpi(o){ return `<div class="kpi accent-${o.accent||'brand'}">
+  <div class="top"><div class="ico"><svg viewBox="0 0 24 24">${IC[o.ic]||IC.cash}</svg></div><div class="h">${o.h}</div></div>
+  <div class="v">${o.cur?`<span class="cur">${o.cur}</span>`:''}${o.v}</div>
+  <div class="s">${o.s||''}</div></div>`; }
+function panelHead(title,sub,link){ return `<h3>${title}${link?`<span class="hl">${link}</span>`:''}</h3>${sub?`<p class="lede">${sub}</p>`:''}`; }
+
+/* =========================================================================
+   RENDER DISPATCH
+   ========================================================================= */
+function render(){
+  buildDQ();
+  document.getElementById("srcAsOf").textContent="Sheet as-of: "+F.date(STATE.today);
+  document.getElementById("trkMsg").textContent=STATE.trkMsg||"";
+  const C=computeContext();
+  const P=C.P;
+  const titles={overview:["Overview & ARPA","What the paying book is worth, and what needs action"],
+    build:["Brand Build",`Promote M1/M2 brands to M3 and model ARPA toward the $${CONFIG.ARPA_TARGET/1000}K target`],
+    growth:["Growth","Acquisition volume, cash monetisation and new-client quality"],
+    velocity:["ROAS Velocity","Milestone progression and time from payment to first ad"],
+    compare:["Compare Periods","Two periods side by side — cash, ARPA and brand-level change"],
+    integration:["Integration","Payment-to-live onboarding, first-ad timing and churn matching"],
+    ledger:["Client Ledger","Every invoice, payment status and outstanding balance"]};
+  document.getElementById("pageTitle").textContent=titles[STATE.route][0];
+  document.getElementById("pageSub").textContent=titles[STATE.route][1];
+  // period controls hidden on compare (owns its own)
+  document.getElementById("filterbar").style.display=STATE.route==="compare"?"none":"flex";
+  try{
+    if(STATE.route==="overview")renderOverview(C);
+    else if(STATE.route==="build")renderBuild(C);
+    else if(STATE.route==="growth")renderGrowth(C);
+    else if(STATE.route==="velocity")renderVelocity(C);
+    else if(STATE.route==="compare")renderCompare(C);
+    else if(STATE.route==="integration")renderIntegration(C);
+    else if(STATE.route==="ledger")renderLedger(C);
+  }catch(err){ document.getElementById("r-"+STATE.route).innerHTML=`<div class="panel"><h3>Render error</h3><p class="lede">${esc(err.message)}</p></div>`; console.error(err); }
+  document.getElementById("footnote").innerHTML=`MoonTech Client Intelligence 2.0 · ${STATE.srcKind==="live"?"Live Google Sheets":"Sample data (not live)"} · ARPA modelled in USD at AED ${CONFIG.AED_PER_USD}/USD · figures traceable to published receivables + ROAS tracker`;
+}
+
+/* ---------------- PAGE 1: OVERVIEW & ARPA ---------------- */
+function renderOverview(C){
+  const el=document.getElementById("r-overview"); const P=C.P, A=C.A;
+  const kpis=[
+    kpi({ic:'cash',accent:'brand',h:'Cash collected',cur:F.ccyLbl(),v:F.aed(C.rev).replace(/^[^\d-]+/,''),s:`${C.cashSel.length} receipts · by payment date ${P.isAll?'':chip(C.rev,C.revPrev)}`}),
+    kpi({ic:'arpa',accent:'violet',h:'Modelled annualised ARPA',cur:'$',v:F.int(Math.round(A.arpa)),s:`${A.n} paid ROAS brands ${C.APrev&&C.APrev.arpa?chip(A.arpa,C.APrev.arpa):''}`}),
+    kpi({ic:'users',accent:'green',h:'Active paying ROAS brands',v:F.int(C.activeBrands),s:`${A.excluded} paid non-ROAS excluded`}),
+    kpi({ic:'alert',accent:'red',h:'Open receivables (as-of)',cur:F.ccyLbl(),v:F.aed(C.openAR).replace(/^[^\d-]+/,''),s:`${C.openAsOf.length} open · ${C.overdue.length} overdue`}),
+    kpi({ic:'tag',accent:'brand',h:'New brands won',v:F.int(C.acqSel.length),s:`${P.isAll?C.acq.length+' all-time':chip(C.acqSel.length,C.acqPrev.length)+' vs prev'} · cash-confirmed`})
+  ].join("");
+  // ARPA audit rows
+  const auditRows=A.rows.slice(0,40).map(r=>`<tr>
+    <td>${esc(r.name)}</td><td>${moonPhases(r.level)}</td><td class="hint" style="font-size:11px">${esc(r.basis)}</td>
+    <td class="rt mono">${r.refundAmt?('-'+F.usd(r.refundAmt)):'—'}</td><td class="rt mono"><b>${F.usd(r.usd)}</b></td>
+    <td>${r.dropped?'<span class="pill red">dropped</span>':r.churn?'<span class="pill amber">churn</span>':'<span class="pill green">active</span>'}</td></tr>`).join("");
+  // ageing buckets
+  const ag=ageingBuckets(C.openAsOf,C.today);
+  const agRows=ag.map(b=>`<tr><td><span class="d" style="background:${b.color}"></span>${b.label}</td><td class="rt mono">${F.aed(b.amt)}</td><td class="rt">${b.n}</td><td class="rt">${C.openAR?Math.round(b.amt/C.openAR*100):0}%</td></tr>`).join("");
+  // path to target (top eligible below target)
+  const bbctx=bbContext(A); const path=bbctx.below.filter(r=>r.level<3).sort((a,b)=>(CONFIG.M3_MONTHLY*12-b.usd)-(CONFIG.M3_MONTHLY*12-a.usd)).slice(0,6);
+  const pathRows=path.map((r,i)=>{ const after=CONFIG.M3_MONTHLY*12; const gap=CONFIG.ARPA_TARGET-r.usd;
+    return `<tr><td>${i+1}</td><td>${esc(r.name)}</td><td class="rt mono">${F.usd(r.usd)}</td><td class="rt mono" style="color:var(--green)">+${F.usd(after-r.usd)}</td><td style="width:90px"><div class="gapbar"><span style="width:${Math.max(4,Math.min(100,r.usd/CONFIG.ARPA_TARGET*100))}%"></span></div></td></tr>`; }).join("");
+  // ladder summary by paid level
+  const lvlCounts=[1,2,3,4,5].map(L=>({L,n:A.rows.filter(r=>r.level===L).length, spend:A.rows.filter(r=>r.level===L).reduce((s,r)=>s+r.usd,0)}));
+  const ladderRows=lvlCounts.map(x=>`<tr><td><span class="pill violet">M${x.L}</span></td><td class="rt">${x.n}</td><td class="rt mono">${F.usd(x.spend)}</td></tr>`).join("");
+  // monthly trend
+  const keys=monthKeysFrom(CONFIG.ACQUISITION_START,STATE.today).slice(-13);
+  const revSeries=keys.map(k=>revenueForMonth(STATE.rows,k)); const acqByM={}; C.acq.forEach(a=>acqByM[a.month]=(acqByM[a.month]||0)+1);
+  const acqSeries=keys.map(k=>acqByM[k]||0); const partialIdx=keys.indexOf(F.ym(STATE.today));
+  // acquisition log grouped
+  const byMonth={}; C.acq.slice().sort((a,b)=>b.date-a.date).forEach(a=>{(byMonth[a.month]=byMonth[a.month]||[]).push(a);});
+  const logHtml=Object.keys(byMonth).sort().reverse().slice(0,8).map(mk=>`<div style="border-top:1px solid var(--line);padding:9px 0"><div style="display:flex;justify-content:space-between"><span class="hint">${F.ymLabel(mk)}</span><span class="pill brand">${byMonth[mk].length}</span></div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">${byMonth[mk].map(a=>`<span class="pill grey">${esc(a.name)}${a.reacquired?' ↺':''}</span>`).join("")}</div></div>`).join("");
+
+  el.innerHTML=`<div class="kpis">${kpis}</div>
+  <div class="grid3">
+    <div class="panel">${panelHead('ARPA workings — audit trail','Paid ROAS clients (+ approved exceptions). Net of VAT where Included, less refunds. ≤M2 = ROAS spend to date; >M2 = latest paid ×12; dropped = YTD.')}
+      <div class="tbl-wrap" style="max-height:330px;overflow:auto"><table><thead><tr><th>Brand</th><th>ROAS</th><th>Basis</th><th class="rt">Refund</th><th class="rt">Net $</th><th>Status</th></tr></thead><tbody>${auditRows||'<tr><td class="hint">No qualifying paid ROAS clients in view.</td></tr>'}</tbody></table></div>
+      <div class="upliftbox" style="margin-top:12px"><div class="row"><span>Clients included</span><b>${A.n}</b></div><div class="row"><span>Modelled portfolio total</span><b>${F.usd(A.rows.reduce((s,r)=>s+r.usd,0))}</b></div><div class="row"><span>Modelled annualised ARPA</span><b>${F.usd(A.arpa)}</b></div></div>
+    </div>
+    <div class="panel">${panelHead('Collections & ageing','Open, non-cancelled invoices as-of '+F.date(C.today)+', by age of due date.')}
+      <table><thead><tr><th>Bucket</th><th class="rt">Amount</th><th class="rt">Inv</th><th class="rt">%</th></tr></thead><tbody>${agRows}<tr style="border-top:2px solid var(--line-strong)"><td><b>Total open</b></td><td class="rt mono"><b>${F.aed(C.openAR)}</b></td><td class="rt"><b>${C.openAsOf.length}</b></td><td class="rt">100%</td></tr></tbody></table>
+    </div>
+    <div class="panel">${panelHead('Path to $'+(CONFIG.ARPA_TARGET/1000)+'K','Top non-dropped ROAS clients below target.','→ Brand Build')}
+      <table><thead><tr><th>#</th><th>Brand</th><th class="rt">Now</th><th class="rt">Lift→M3</th><th>Gap</th></tr></thead><tbody>${pathRows||'<tr><td class="hint">None below target.</td></tr>'}</tbody></table>
+      <div style="margin-top:14px">${panelHead('ROAS ladder','Paid milestone distribution.','→ Velocity')}<table><thead><tr><th>Tier</th><th class="rt">Brands</th><th class="rt">Model $</th></tr></thead><tbody>${ladderRows}</tbody></table></div>
+    </div>
+  </div>
+  <div class="grid2">
+    <div class="panel">${panelHead('Monthly trend','Cash collected (bars, '+F.ccyLbl()+') vs new brands won (line). Current month shaded = partial.')}
+      <div id="ovTrend"></div><div class="legend"><span><i style="background:var(--brand)"></i>Cash collected</span><span><span class="d" style="background:var(--violet)"></span>New brands won</span><span style="color:var(--ink-faint)">hatched = partial month</span></div></div>
+    <div class="panel">${panelHead('Acquisition log','New brands, dated by first payment received. ↺ = approved re-acquisition.')}
+      <div class="acqlog">${logHtml||'<p class="hint">No acquisitions in range.</p>'}</div></div>
+  </div>`;
+  chartDualAxis(document.getElementById("ovTrend"),keys.map(F.ymLabel),revSeries,acqSeries,{h:280,partialIdx,barLbl:"Cash",barFmt:v=>F.aed(v),lineLbl:"New brands"});
+}
+function ageingBuckets(open,today){ const B=[{label:"Not due",color:cvar('--neutral'),amt:0,n:0},{label:"0–30 days",color:cvar('--amber'),amt:0,n:0},{label:"31–60 days",color:cvar('--amber'),amt:0,n:0},{label:"61–90 days",color:cvar('--red'),amt:0,n:0},{label:"91+ days",color:cvar('--red'),amt:0,n:0}];
+  open.forEach(r=>{ let idx; if(!r.due){ idx=r.pastDue>90?4:r.pastDue>60?3:r.pastDue>30?2:r.pastDue>0?1:0; }
+    else { const d=Math.floor((today-r.due)/86400000); idx= d<=0?0: d<=30?1: d<=60?2: d<=90?3:4; }
+    B[idx].amt+=r.total; B[idx].n++; }); return B; }
+
+/* ---------------- PAGE 2: BRAND BUILD ---------------- */
+function renderBuild(C){
+  const el=document.getElementById("r-build"); const A=C.A; const ctx=bbContext(A); BB_CTX=ctx; const T=ctx.T, M3VAL=ctx.M3VAL;
+  const {m1,m2}=pools(ctx); BB_PROMOTE1=Math.min(BB_PROMOTE1,m1.length); BB_PROMOTE2=Math.min(BB_PROMOTE2,m2.length);
+  const cur=projectedARPA(ctx,0,0); const proj=projectedARPA(ctx,BB_PROMOTE1,BB_PROMOTE2);
+  const uplift=proj-cur; const upPct=cur?uplift/cur*100:0; const nProm=BB_PROMOTE1+BB_PROMOTE2;
+  const belowCount=ctx.below.length; const totalUplift=(()=>{ // moving all eligible M1+M2 to M3
+    const full=projectedARPA(ctx,m1.length,m2.length); return (full-cur)*ctx.all.length; })();
+  const m3ready=ctx.m2.length; // closest (one rung)
+  const stats=[
+    kpi({ic:'arpa',accent:'brand',h:'Current modelled ARPA',cur:'$',v:F.int(Math.round(cur)),s:'actual, all paid ROAS brands'}),
+    kpi({ic:'rocket',accent:'green',h:'Projected ARPA (scenario)',cur:'$',v:F.int(Math.round(proj)),s:`${nProm} promoted ${uplift?`<span class="chip up">${F.pct(upPct)}</span>`:''}`}),
+    kpi({ic:'alert',accent:'amber',h:'Brands below target',v:F.int(belowCount),s:`of ${ctx.active.length} active ROAS brands`}),
+    kpi({ic:'tag',accent:'violet',h:'Total modelled uplift',cur:'$',v:F.int(Math.round(totalUplift)),s:'if all eligible M1/M2 → M3'}),
+    kpi({ic:'users',accent:'brand',h:'Eligible promotions',v:F.int(m1.length+m2.length),s:`${m1.length} M1 · ${m2.length} M2`})
+  ].join("");
+  // ranked path table
+  const pathRows=ctx.below.filter(r=>r.level<3).sort((a,b)=>(M3VAL-b.usd)-(M3VAL-a.usd)||b.usd-a.usd).slice(0,12).map((r,i)=>{
+    const lift=M3VAL-r.usd; const tier=brandTier(r.name);
+    return `<tr><td>${i+1}</td><td class="cflex"><span class="avatar" style="background:${avatarColor(r.name)}">${esc(initials(r.name))}</span>${esc(r.name)}</td>
+      <td class="rt mono">${F.usd(r.usd)}</td><td class="rt mono">${F.usd(M3VAL)}</td><td class="rt mono" style="color:var(--green)">+${F.usd(lift)}</td>
+      <td><span class="movetag m${r.level}">M${r.level} → M3</span></td><td>${tier?`<span class="pill grey">${esc(tier)}</span>`:'<span class="hint">—</span>'}</td></tr>`; }).join("");
+  // tier funnel (paid M counts)
+  const lvl=[1,2,3,4,5].map(L=>A.rows.filter(r=>r.level===L).length);
+  // opportunity matrix: level x uplift band
+  const bands=[[0,1000],[1000,2500],[2500,5000],[5000,10000],[10000,1e9]]; const bandLbl=['<$1K','$1–2.5K','$2.5–5K','$5–10K','>$10K'];
+  const matrix=[1,2,3].map(L=>{ const brs=ctx.active.filter(r=>r.level===L); const cells=bands.map(([lo,hi])=>brs.filter(r=>{const u=M3VAL-r.usd;return u>=lo&&u<hi;}).length);
+    const opp=brs.reduce((s,r)=>s+Math.max(0,M3VAL-r.usd),0); return {L,cells,opp,n:brs.length}; });
+  const mxCell=Math.max(1,...matrix.flatMap(m=>m.cells));
+  // recommendations (deterministic)
+  const recos=[]; if(m2.length)recos.push({t:`Promote ${Math.min(m2.length,12)} M2 brand${m2.length>1?'s':''} to M3`,d:`One rung to annualisation — quickest wins. Top: ${m2.slice(0,3).map(r=>r.name).join(", ")}.`});
+  if(m1.length)recos.push({t:`Advance ${Math.min(m1.length,12)} M1 brand${m1.length>1?'s':''}`,d:`Two rungs; highest modelled value first: ${m1.slice(0,3).map(r=>r.name).join(", ")}.`});
+  if(ctx.stalledM3.length)recos.push({t:`Lift next invoice for ${ctx.stalledM3.length} M3+ brand(s) under target`,d:`Already annualised but below $${T/1000}K — grow the latest paid ROAS invoice.`});
+  recos.push({t:'Review in 30 days',d:'Re-check promotion mix against actual paid milestones; this is a scenario, not booked revenue.'});
+
+  el.innerHTML=`<div class="kpis">${stats}</div>
+  <div class="grid2">
+    <div class="panel">${panelHead('ARPA Uplift Planner','Move brands from M1/M2 to the locked $'+(M3VAL/1000)+'K M3 value and watch the fleet average. Scenario — not booked revenue.')}
+      <div class="slider-row"><div class="slabel"><span><span class="movetag m1">M1 → M3</span> promote <b id="bbN1">${BB_PROMOTE1}</b> / ${m1.length}</span></div><input type="range" id="bbR1" min="0" max="${m1.length}" value="${BB_PROMOTE1}" step="1"></div>
+      <div class="slider-row"><div class="slabel"><span><span class="movetag m2">M2 → M3</span> promote <b id="bbN2">${BB_PROMOTE2}</b> / ${m2.length}</span></div><input type="range" id="bbR2" min="0" max="${m2.length}" value="${BB_PROMOTE2}" step="1"></div>
+      <div id="bbBars" style="margin-top:8px"></div>
+      <div class="legend"><span><i style="background:var(--brand)"></i>Current</span><span><i style="background:var(--violet)"></i>Planned</span><span><i style="background:var(--green)"></i>Target $${T/1000}K</span></div>
+    </div>
+    <div class="panel">${panelHead('Projected uplift (annualised)','Scenario result of the planner on the left.')}
+      <div class="upliftbox">
+        <div class="row"><span>Current modelled ARPA</span><b>${F.usd(cur)}</b></div>
+        <div class="row"><span>Projected modelled ARPA</span><b style="color:var(--green)">${F.usd(proj)}</b></div>
+        <div class="row"><span>Incremental ARPA</span><b style="color:var(--green)">+${F.usd(uplift)}</b></div>
+        <div class="row"><span>Lift vs current</span><b>${cur?F.pct(upPct):'n/a'}</b></div>
+        <div class="row"><span>Brands upgrading</span><b>${nProm} (${BB_PROMOTE1} M1 · ${BB_PROMOTE2} M2)</b></div>
+        <div class="row"><span>Gap to $${T/1000}K target</span><b>${proj>=T?'<span style="color:var(--green)">at/above</span>':F.usd(T-proj)+' short'}</b></div>
+      </div>
+      <p class="hint" style="margin-top:10px">Promotion order is deterministic: highest current modelled value first. Reset restores 0 promotions. Target and $${M3VAL/1000}K M3 value come from config.</p>
+    </div>
+  </div>
+  <div class="grid2b">
+    <div class="panel">${panelHead('Path to $'+(T/1000)+'K — brand upgrade priority','Non-dropped ROAS brands below target, ranked by modelled lift.')}
+      <div class="tbl-wrap"><table><thead><tr><th>#</th><th>Brand</th><th class="rt">Current</th><th class="rt">After M3</th><th class="rt">Lift</th><th>Path</th><th>Tier</th></tr></thead><tbody>${pathRows||'<tr><td class="hint">No eligible brands below target.</td></tr>'}</tbody></table></div></div>
+    <div class="panel">${panelHead('Brand tier funnel — paid milestones','Count of brands at each highest PAID milestone (not tracker tier; not a sales funnel).')}
+      <div id="bbFunnel"></div>
+      <div class="gate" style="margin-top:14px"><span class="tag">Data integration required</span><br><b>Promotion cost, ROI & payback</b> need a governed budget/margin sheet (planned_spend, margin, payback). Shown here as ARPA uplift only — no fabricated spend or ROI.</div>
+    </div>
+  </div>
+  <div class="grid2b">
+    <div class="panel">${panelHead('Opportunity matrix','Brand count by paid tier × modelled uplift band. Colour = concentration of upside (not $ investment).')}
+      <div class="tbl-wrap"><table class="heat"><thead><tr><th>Tier (n)</th>${bandLbl.map(b=>`<th class="rt">${b}</th>`).join("")}<th class="rt">Opportunity</th></tr></thead><tbody>${matrix.map(m=>`<tr><td style="text-align:left"><b>M${m.L}</b> <span class="hint">(${m.n})</span></td>${m.cells.map(c=>`<td style="background:${c?`color-mix(in srgb, var(--brand) ${Math.round(c/mxCell*70)}%, var(--surface))`:'transparent'};color:${c>mxCell*0.5?'#fff':'var(--ink)'}">${c||'·'}</td>`).join("")}<td class="rt mono">${F.usd(m.opp)}</td></tr>`).join("")}</tbody></table></div></div>
+    <div class="panel">${panelHead('Recommended actions','Deterministic heuristics — which brands and why. No causal claims.')}
+      ${recos.map((r,i)=>`<div class="recocard"><div class="reconum">${i+1}</div><div><div class="reco-t">${esc(r.t)}</div><div class="reco-d">${esc(r.d)}</div></div></div>`).join("")}</div>
+  </div>`;
+  // planner bar chart
+  const drawBB=()=>{ const el2=document.getElementById("bbBars");
+    chartBars(el2,['Current','Planned','Target'],[{name:'ARPA',color:cvar('--brand'),data:[cur,proj,T]}],{h:200,valueLabels:true,yFmt:F.usd});
+    const bars=el2.querySelectorAll(".bar"); if(bars[1])bars[1].setAttribute('fill',cvar('--violet')); if(bars[2])bars[2].setAttribute('fill',cvar('--green')); };
+  drawBB();
+  chartHBars(document.getElementById("bbFunnel"),[1,2,3,4,5].map(L=>({label:'M'+L+' — '+['Discover','Grow','Scale','Accelerate','Enterprise'][L-1],value:lvl[L-1],color:'linear-gradient(90deg,var(--violet),var(--brand))'})),{labelW:140,valW:40});
+  const n1=document.getElementById("bbN1"),n2=document.getElementById("bbN2");
+  document.getElementById("bbR1").addEventListener("input",e=>{BB_PROMOTE1=+e.target.value; renderBuild(C);});
+  document.getElementById("bbR2").addEventListener("input",e=>{BB_PROMOTE2=+e.target.value; renderBuild(C);});
+}
+function brandTier(name){ const t=(STATE.tracker||[]).find(r=>normBrand(r.brand)===normBrand(name)); return t&&t.tier?t.tier:''; }
+
+/* ---------------- PAGE 3: GROWTH ---------------- */
+function renderGrowth(C){
+  const el=document.getElementById("r-growth"); const P=C.P;
+  const keys=monthKeysFrom(CONFIG.ACQUISITION_START,STATE.today).slice(-12);
+  const acqByM={}; C.acq.forEach(a=>acqByM[a.month]=(acqByM[a.month]||0)+1); const acqS=keys.map(k=>acqByM[k]||0);
+  let cum=0; const cumS=keys.map(k=>{cum+=acqByM[k]||0;return cum;});
+  const revS=keys.map(k=>revenueForMonth(STATE.rows,k));
+  // cohort attainment heatmap: cohort month x months-since first paid -> % still invoicing paid ROAS
+  const cohort=cohortAttainment();
+  // median first-month spend of new cohort in period
+  const newCohort=C.clients.filter(c=>{const fp=c.firstPaidPay||c.firstPaid;const d=fp&&(fp.payDate||fp.invDate);return c.isNew&&d&&P.inSel(d);});
+  const firstAmts=newCohort.map(c=>{const fp=c.firstPaidPay||c.firstPaid;return fp?fp.total:0;}).filter(Boolean).sort((a,b)=>a-b);
+  const medSpend=firstAmts.length?firstAmts[Math.floor(firstAmts.length/2)]:0;
+  const cohortCash=acqCohortSpend(C.clients,P);
+  const momGrowth=(()=>{const a=acqS[acqS.length-1]||0,b=acqS[acqS.length-2]||0;return b?(a-b)/b*100:0;})();
+  const kpis=[
+    kpi({ic:'tag',accent:'brand',h:'New brands won',v:F.int(C.acqSel.length),s:`${P.isAll?'all-time '+C.acq.length:chip(C.acqSel.length,C.acqPrev.length)} · cash-confirmed`}),
+    kpi({ic:'cash',accent:'green',h:'Collected revenue',cur:F.ccyLbl(),v:F.aed(C.rev).replace(/^[^\d-]+/,''),s:`${P.isAll?'':chip(C.rev,C.revPrev)} by payment date`}),
+    kpi({ic:'users',accent:'violet',h:'Cash from new cohort',cur:F.ccyLbl(),v:F.aed(cohortCash).replace(/^[^\d-]+/,''),s:`avg per new brand (period)`}),
+    kpi({ic:'bill',accent:'brand',h:'Median first invoice',cur:F.ccyLbl(),v:F.aed(medSpend).replace(/^[^\d-]+/,''),s:`${newCohort.length} new brands · not CAC`}),
+    kpi({ic:'arpa',accent:'green',h:'Acquisition momentum',v:(momGrowth>=0?'+':'')+momGrowth.toFixed(0)+'%',s:'new brands MoM'})
+  ].join("");
+  el.innerHTML=`<div class="kpis">${kpis}</div>
+  <div class="grid2b">
+    <div class="panel">${panelHead('Monthly brand acquisitions','Cash-confirmed new brands (bars) + cumulative (line). Last 12 months.')}
+      <div id="gAcq"></div><div class="legend"><span><i style="background:var(--brand)"></i>New brands</span><span><span class="d" style="background:var(--violet)"></span>Cumulative</span></div></div>
+    <div class="panel">${panelHead('Collected revenue vs brands won','Cash collected ('+F.ccyLbl()+', bars) vs new brands (line). Collection ≠ new-cohort revenue.')}
+      <div id="gRev"></div><div class="legend"><span><i style="background:var(--brand)"></i>Cash collected</span><span><span class="d" style="background:var(--violet)"></span>New brands</span></div></div>
+  </div>
+  <div class="grid3">
+    <div class="panel">${panelHead('New-brand quality over time','Paid-milestone attainment by acquisition cohort (payment-activity proxy, not true retention). Immature cohorts censored.')}
+      <div class="tbl-wrap">${cohort.html}</div></div>
+    <div class="panel">${panelHead('Acquisition basis','Channel source needs a CRM field — shown here as a supported alternative.')}
+      <div class="gate" style="margin-bottom:12px"><span class="tag">Channel data required</span><br>No acquisition <b>channel/source</b> field in source. Alternative below: new brands by ROAS vs non-ROAS entry.</div>
+      <div id="gBasis" style="display:flex;justify-content:center"></div><div id="gBasisLeg" class="legend" style="justify-content:center"></div></div>
+    <div class="panel">${panelHead('Growth insights','Each cites source brands/period.')}
+      <div id="gInsights"></div></div>
+  </div>
+  <div class="panel" style="margin-top:15px">${panelHead('Monthly acquisition log','Brand, first paid invoice, paid milestone, cash received, tracker status. No invented campaign source.')}
+    <div class="tbl-wrap" style="max-height:340px;overflow:auto"><table><thead><tr><th>First paid</th><th>Brand</th><th>Milestone</th><th class="rt">First invoice</th><th>Tracker status</th><th>Flag</th></tr></thead><tbody>${growthLog(C)}</tbody></table></div></div>`;
+  chartDualAxis(document.getElementById("gAcq"),keys.map(F.ymLabel),acqS,cumS,{h:260,barLbl:"New brands",lineLbl:"Cumulative"});
+  chartDualAxis(document.getElementById("gRev"),keys.map(F.ymLabel),revS,acqS,{h:260,partialIdx:keys.indexOf(F.ym(STATE.today)),barLbl:"Cash",barFmt:v=>F.aed(v),lineLbl:"New brands"});
+  // basis donut: ROAS vs non-ROAS among new brands
+  const roasNew=C.clients.filter(c=>c.isNew&&c.paidLevel).length, cplNew=C.clients.filter(c=>c.isNew&&c.hasPaid&&!c.paidLevel).length;
+  chartDonut(document.getElementById("gBasis"),[{label:'ROAS milestone',value:roasNew,color:cvar('--brand')},{label:'Non-ROAS / CPL',value:cplNew,color:cvar('--violet')}],{centerNum:roasNew+cplNew,centerLbl:'new brands'});
+  document.getElementById("gBasisLeg").innerHTML=`<span><span class="d" style="background:var(--brand)"></span>ROAS ${roasNew}</span><span><span class="d" style="background:var(--violet)"></span>Non-ROAS ${cplNew}</span>`;
+  // insights
+  const bestM=keys.map((k,i)=>({k,n:acqS[i]})).sort((a,b)=>b.n-a.n)[0];
+  const openNew=C.clients.filter(c=>c.isNew&&c.outstanding>0).length;
+  const reachedM2=C.clients.filter(c=>c.isNew&&c.paidLevel>=2).length, newRoas=C.clients.filter(c=>c.isNew&&c.paidLevel).length;
+  document.getElementById("gInsights").innerHTML=[
+    {t:'Best acquisition month',d:bestM?`${F.ymLabel(bestM.k)} — ${bestM.n} new brands`:'—'},
+    {t:'New brands reaching paid M2+',d:`${reachedM2} of ${newRoas} ROAS new brands (${newRoas?Math.round(reachedM2/newRoas*100):0}%)`},
+    {t:'New brands with open invoice',d:`${openNew} newly-won brand(s) have an outstanding balance`},
+    {t:'Momentum',d:`New brands ${momGrowth>=0?'up':'down'} ${Math.abs(momGrowth).toFixed(0)}% month-over-month`}
+  ].map((x,i)=>`<div class="recocard"><div class="reconum">${i+1}</div><div><div class="reco-t">${esc(x.t)}</div><div class="reco-d">${esc(x.d)}</div></div></div>`).join("");
+}
+function cohortAttainment(){ // % of each acquisition-month cohort reaching paid M1..M6 over time (attainment, not retention)
+  const clients=byClient(STATE.rows).filter(c=>c.isNew&&c.paidLevel);
+  const coh={}; clients.forEach(c=>{ const fp=c.firstPaidPay||c.firstPaid; const d=fp&&(fp.payDate||fp.invDate); if(!d)return; const mk=F.ym(d); (coh[mk]=coh[mk]||[]).push(c); });
+  const months=Object.keys(coh).sort().slice(-6);
+  if(!months.length)return {html:'<p class="hint">No cohorts yet.</p>'};
+  const head=`<table class="heat"><thead><tr><th style="text-align:left">Cohort</th>${[1,2,3,4,5].map(m=>`<th>M${m}</th>`).join("")}</tr></thead><tbody>`;
+  const rows=months.map(mk=>{ const cs=coh[mk]; const n=cs.length;
+    const cells=[1,2,3,4,5].map(L=>{ const reached=cs.filter(c=>c.paidLevel>=L).length; const pct=Math.round(reached/n*100);
+      // censor: only show if enough months elapsed (rough: level L needs ~L months)
+      const monthsElapsed=(STATE.today.getFullYear()-(+mk.split("-")[0]))*12+(STATE.today.getMonth()-(+mk.split("-")[1]-1));
+      if(monthsElapsed<L-1)return `<td class="hint">—</td>`;
+      return `<td style="background:color-mix(in srgb, var(--brand) ${Math.round(pct*.7)}%, var(--surface));color:${pct>50?'#fff':'var(--ink)'}">${pct}%</td>`; });
+    return `<tr><td style="text-align:left">${F.ymLabel(mk)} <span class="hint">(${n})</span></td>${cells.join("")}</tr>`; }).join("");
+  return {html:head+rows+'</tbody></table>'};
+}
+function growthLog(C){ const rows=C.acq.slice().sort((a,b)=>b.date-a.date).slice(0,30).map(a=>{ const c=C.clients.find(cl=>cl.name===a.name); const fp=c&&(c.firstPaidPay||c.firstPaid);
+  const trk=(STATE.tracker||[]).find(t=>normBrand(t.brand)===normBrand(a.name));
+  const st=trk?trk.status:''; const stp=/churn/i.test(st)?'red':/active/i.test(st)?'green':/hold/i.test(st)?'amber':'grey';
+  return `<tr><td class="mono">${F.date(a.date)}</td><td class="cflex"><span class="avatar" style="background:${avatarColor(a.name)}">${esc(initials(a.name))}</span>${esc(a.name)}</td><td>${fp&&fp.mile?moonPhases(fp.mile):'<span class="hint">—</span>'}</td><td class="rt mono">${fp?F.aed(fp.total):'—'}</td><td>${st?`<span class="pill ${stp}">${esc(st)}</span>`:'<span class="hint">—</span>'}</td><td>${a.reacquired?'<span class="pill violet">re-acq ↺</span>':''}</td></tr>`; }).join("");
+  return rows||'<tr><td class="hint">No acquisitions.</td></tr>'; }
+
+/* ---------------- PAGE 4: ROAS VELOCITY ---------------- */
+function renderVelocity(C){
+  const el=document.getElementById("r-velocity"); const A=C.A; const clients=C.clients;
+  const activeROAS=A.rows.filter(r=>!r.dropped).length;
+  // net monthly spend series
+  const keys=monthKeysFrom(CONFIG.ACQUISITION_START,STATE.today).slice(-12);
+  const netByM=keys.map(k=>STATE.rows.filter(r=>r.isPaid&&r.mile&&F.ym(r.payDate)===k).reduce((s,r)=>s+usdNet(r),0));
+  const brandsByM=keys.map(k=>new Set(STATE.rows.filter(r=>r.isPaid&&r.mile&&r.payDate&&F.ym(r.payDate)<=k).map(r=>r.brand)).size);
+  const avgSpend=activeROAS?A.rows.reduce((s,r)=>s+r.usd,0)/activeROAS:0;
+  // milestone distribution
+  const dist=[1,2,3,4,5].map(L=>({L,n:A.rows.filter(r=>r.level===L).length,spend:A.rows.filter(r=>r.level===L).reduce((s,r)=>s+r.usd,0)}));
+  // velocity timing M1->M2
+  const timing=milestoneTiming(clients);
+  const pendingInv=STATE.rows.filter(r=>!r.isPaid&&!r.isCancelled&&r.mile).reduce((s,r)=>s+r.total,0);
+  // health classes (rule-based from paidLevel + dropped)
+  const health=healthClasses(A.rows);
+  const fastGrow=velocityMovers(clients).filter(m=>m.mom>50).length;
+  const kpis=[
+    kpi({ic:'users',accent:'brand',h:'Active ROAS brands',v:F.int(activeROAS),s:`${A.excluded} non-ROAS excluded`}),
+    kpi({ic:'cash',accent:'green',h:'Avg modelled spend',cur:'$',v:F.int(Math.round(avgSpend)),s:'per active ROAS brand'}),
+    kpi({ic:'rocket',accent:'violet',h:'Fast-growing brands',v:F.int(fastGrow),s:'>50% MoM net spend'}),
+    kpi({ic:'bill',accent:'amber',h:'Pending ROAS invoices',cur:F.ccyLbl(),v:F.aed(pendingInv).replace(/^[^\d-]+/,''),s:'invoiced, not yet paid'}),
+    kpi({ic:'heart',accent:'green',h:'Ladder health',v:health.goodPct+'%',s:'in Good or Excellent'})
+  ].join("");
+  el.innerHTML=`<div class="kpis">${kpis}</div>
+  <div class="grid2">
+    <div class="panel">${panelHead('Brand ladder distribution','Active brands and modelled $ by highest PAID milestone (payment stage, not ad ROAS).')}
+      <div class="statrow" style="grid-template-columns:repeat(5,1fr)">${dist.map(d=>`<div class="ministat" style="--accent:var(--violet)"><div class="l">M${d.L} — ${['Discover','Grow','Scale','Accelerate','Enterprise'][d.L-1]}</div><div class="v">${d.n}</div><div class="c">${F.usd(d.spend)} modelled</div></div>`).join("")}</div></div>
+    <div class="panel">${panelHead('ROAS velocity trend','Monthly net ROAS invoice spend (bars) vs cumulative active brands (line). Net USD.')}
+      <div id="vTrend"></div><div class="legend"><span><i style="background:var(--brand)"></i>Net ROAS spend</span><span><span class="d" style="background:var(--violet)"></span>Active brands</span></div></div>
+  </div>
+  <div class="grid3">
+    <div class="panel">${panelHead('Spend vs growth vs health','Each bubble = a brand. X = net ROAS spend (log), Y = MoM spend change, size = spend. Invoice-spend momentum, not ad ROAS.')}
+      <div id="vBubble"></div></div>
+    <div class="panel">${panelHead('Milestone timing','Median days between first paid milestones. Sample size shown.')}
+      <table><thead><tr><th>Transition</th><th class="rt">Median days</th><th class="rt">n</th></tr></thead><tbody>${timing.map(t=>`<tr><td><span class="movetag m1">M${t.from}→M${t.to}</span></td><td class="rt mono">${t.median!=null?t.median:'—'}</td><td class="rt">${t.n}</td></tr>`).join("")}</tbody></table>
+      <div class="gate" style="margin-top:12px"><span class="tag">No ad data</span><br><b>Campaign ROAS multiple</b> (e.g. "4.1×") needs ad spend + attributed GMV. M1–M5 are payment stages only.</div></div>
+    <div class="panel">${panelHead('Ladder health','Rule-based from paid stage & drop status. Count + share.')}
+      <div id="vHealth" style="display:flex;justify-content:center"></div>
+      <div style="margin-top:10px">${health.items.map(h=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;font-size:12.5px"><span><span class="d" style="background:${h.color}"></span>${h.label}</span><span><b>${h.n}</b> <span class="hint">${h.pct}%</span></span></div>`).join("")}</div></div>
+  </div>
+  <div class="grid2b">
+    <div class="panel">${panelHead('Top movers by spend velocity','Ranked by % change in paid net ROAS spend. Tooltip-level invoice backing.')}
+      <div class="tbl-wrap"><table><thead><tr><th>#</th><th>Brand</th><th>Paid M</th><th class="rt">Net spend</th><th class="rt">MoM</th><th>Health</th></tr></thead><tbody>${velocityMovers(clients).slice(0,6).map((m,i)=>`<tr><td>${i+1}</td><td class="cflex"><span class="avatar" style="background:${avatarColor(m.name)}">${esc(initials(m.name))}</span>${esc(m.name)}</td><td>${moonPhases(m.level)}</td><td class="rt mono">${F.usd(m.spend)}</td><td class="rt mono" style="color:var(--green)">+${m.mom.toFixed(0)}%</td><td><span class="pill ${m.hp}">${m.health}</span></td></tr>`).join("")||'<tr><td class="hint">Insufficient spend history.</td></tr>'}</tbody></table></div></div>
+    <div class="panel">${panelHead('Laggards & activated brands','Low/negative spend momentum, with source-fact reason.')}
+      <div class="tbl-wrap"><table><thead><tr><th>#</th><th>Brand</th><th>Paid M</th><th class="rt">MoM</th><th>Reason</th></tr></thead><tbody>${velocityMovers(clients).slice().reverse().slice(0,6).map((m,i)=>`<tr><td>${i+1}</td><td>${esc(m.name)}</td><td>${moonPhases(m.level)}</td><td class="rt mono" style="color:${m.mom<0?'var(--red)':'var(--ink-soft)'}">${m.mom.toFixed(0)}%</td><td class="hint">${esc(m.reason)}</td></tr>`).join("")}</tbody></table></div></div>
+  </div>`;
+  chartDualAxis(document.getElementById("vTrend"),keys.map(F.ymLabel),netByM,brandsByM,{h:260,barLbl:"Net spend",barFmt:F.usd,lineLbl:"Active brands"});
+  chartBubble(document.getElementById("vBubble"),velocityMovers(clients).map(m=>({label:m.name,x:m.spend,y:m.mom,size:m.spend,color:m.hc})),{});
+  chartDonut(document.getElementById("vHealth"),health.items.map(h=>({label:h.label,value:h.n,color:h.color})),{centerNum:activeROAS,centerLbl:'brands'});
+}
+function milestoneTiming(clients){ const out=[]; for(let L=1;L<=4;L++){ const diffs=[];
+  clients.forEach(c=>{ const a=c.paid.filter(i=>i.mile===L&&i.payDate).sort((x,y)=>x.payDate-y.payDate)[0]; const b=c.paid.filter(i=>i.mile===L+1&&i.payDate).sort((x,y)=>x.payDate-y.payDate)[0];
+    if(a&&b&&b.payDate>a.payDate)diffs.push(Math.round((b.payDate-a.payDate)/86400000)); });
+  diffs.sort((x,y)=>x-y); out.push({from:L,to:L+1,median:diffs.length?diffs[Math.floor(diffs.length/2)]:null,n:diffs.length}); } return out; }
+function brandMonthlyNet(c){ // last two active months net spend
+  const paid=c.paid.filter(i=>i.mile&&i.payDate).sort((a,b)=>a.payDate-b.payDate); if(!paid.length)return{cur:0,prev:0,total:0};
+  const byM={}; paid.forEach(i=>{const k=F.ym(i.payDate);byM[k]=(byM[k]||0)+usdNet(i);}); const ks=Object.keys(byM).sort();
+  const cur=byM[ks[ks.length-1]]||0, prev=byM[ks[ks.length-2]]||0; const total=paid.reduce((s,i)=>s+usdNet(i),0); return {cur,prev,total}; }
+function velocityMovers(clients){ const list=clients.filter(c=>c.hasPaid&&c.paidLevel&&!STATE.dropped.has(c.name)).map(c=>{ const m=brandMonthlyNet(c);
+  const mom=m.prev?(m.cur-m.prev)/m.prev*100:(m.cur?100:0); const h=healthOf(c); const trk=(STATE.tracker||[]).find(t=>normBrand(t.brand)===normBrand(c.name));
+  let reason='active'; if(!m.cur)reason='no recent paid invoice'; else if(mom<0)reason='spend down MoM'; if(trk&&/hold/i.test(trk.status))reason='on hold';
+  return {name:c.name,level:c.paidLevel,spend:m.total,mom,health:h.label,hp:h.pill,hc:h.color,reason}; });
+  return list.sort((a,b)=>b.mom-a.mom); }
+function healthOf(c){ const lvl=c.paidLevel||0; if(STATE.dropped.has(c.name))return{label:'Nurture',pill:'grey',color:cvar('--neutral')};
+  if(lvl>=4)return{label:'Excellent',pill:'green',color:cvar('--green')}; if(lvl>=3)return{label:'Good',pill:'brand',color:cvar('--brand')};
+  if(lvl>=2)return{label:'Watch',pill:'amber',color:cvar('--amber')}; return{label:'Nurture',pill:'violet',color:cvar('--violet')}; }
+function healthClasses(rows){ const cl={Excellent:0,Good:0,Watch:0,Nurture:0}; const col={Excellent:cvar('--green'),Good:cvar('--brand'),Watch:cvar('--amber'),Nurture:cvar('--violet')};
+  rows.filter(r=>!r.dropped).forEach(r=>{ const l=r.level||0; cl[l>=4?'Excellent':l>=3?'Good':l>=2?'Watch':'Nurture']++; });
+  const tot=Object.values(cl).reduce((a,b)=>a+b,0)||1; const items=Object.keys(cl).map(k=>({label:k,n:cl[k],pct:Math.round(cl[k]/tot*100),color:col[k]}));
+  return {items,goodPct:Math.round((cl.Excellent+cl.Good)/tot*100)}; }
+
+/* ---------------- PAGE 5: COMPARE ---------------- */
+let CMP_A=null,CMP_B=null;
+function renderCompare(C){
+  const el=document.getElementById("r-compare");
+  const keys=monthKeysFrom(CONFIG.ACQUISITION_START,STATE.today);
+  const yrs=[...new Set(STATE.rows.flatMap(r=>[r.invDate,r.payDate]).filter(Boolean).map(d=>d.getFullYear()))].sort();
+  let opts=`<option value="ALL">Overall</option>`; yrs.forEach(y=>opts+=`<option value="Y${y}">${y}</option>`);
+  yrs.forEach(y=>{for(let q=1;q<=4;q++){const s=new Date(y,(q-1)*3,1);if(s<=STATE.today)opts+=`<option value="Q${y}-${q}">Q${q} ${y}</option>`;}});
+  keys.forEach(k=>opts+=`<option value="${k}">${F.ymLabel(k)}</option>`);
+  if(!CMP_A){ const cur=F.ym(STATE.today); const prev=keys[keys.length-2]||keys[0]; CMP_A=keys.includes(prev)?prev:keys[0]; CMP_B=cur; }
+  const A=periodMetrics(CMP_A), B=periodMetrics(CMP_B);
+  const card=(label,ic,acc,fmt,aV,bV,invert)=>{ const d=bV-aV; const pct=aV?d/aV*100:null; const good=invert?d<0:d>=0;
+    return `<div class="kpi accent-${acc}"><div class="top"><div class="ico"><svg viewBox="0 0 24 24">${IC[ic]}</svg></div><div class="h">${label}</div></div>
+      <div style="display:flex;gap:16px;align-items:baseline;margin-top:2px"><div><div class="v" style="font-size:22px">${fmt(aV)}</div><div class="hint" style="font-size:10px">A · ${esc(A.label)}</div></div>
+      <div><div class="v" style="font-size:22px">${fmt(bV)}</div><div class="hint" style="font-size:10px">B · ${esc(B.label)}</div></div></div>
+      <div class="s"><span class="chip ${good?'up':'down'}">${pct==null?'New':F.pct(pct)}</span> ${d>=0?'+':''}${fmt(d)} vs A</div></div>`; };
+  // brand-level comparison
+  const bl=brandCompare(CMP_A,CMP_B);
+  const bridge=revenueBridge(CMP_A,CMP_B,A.rev,B.rev);
+  el.innerHTML=`
+  <div class="filterbar" style="margin-bottom:16px">
+    <div style="display:flex;flex-direction:column;gap:4px"><label class="hint" style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--brand-ink)">Period A</label><select id="cmpA" class="field" style="min-width:150px">${opts}</select></div>
+    <button class="btn" id="cmpSwap" style="align-self:flex-end">⇄</button>
+    <div style="display:flex;flex-direction:column;gap:4px"><label class="hint" style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--violet-ink)">Period B</label><select id="cmpB" class="field" style="min-width:150px">${opts}</select></div>
+  </div>
+  <div class="kpis" style="grid-template-columns:repeat(4,1fr)">
+    ${card('Brands won','tag','brand',F.int,A.acq,B.acq)}
+    ${card('Cash collected','cash','green',v=>F.aed(v),A.rev,B.rev)}
+    ${card('Modelled ARPA','arpa','violet',F.usd,A.arpa,B.arpa)}
+    ${card('Avg cohort spend','bill','brand',v=>F.aed(v),A.avgSpend,B.avgSpend)}
+  </div>
+  <div class="grid2">
+    <div class="panel">${panelHead('Key metrics comparison','Comparable units only — separate axes per metric type.')}
+      <div id="cmpBars"></div></div>
+    <div class="panel">${panelHead('Revenue bridge — A to B','Start A + new/increase − lost/decrease = End B. Reconciles to the B−A delta. No causal labels.')}
+      <div id="cmpBridge"></div></div>
+  </div>
+  <div class="panel" style="margin-top:15px">${panelHead('Brand-level comparison','Paid cash by brand in A and B. Added / Removed / Continuing by positive cash.')}
+    <div class="tbl-wrap" style="max-height:360px;overflow:auto"><table><thead><tr><th>Brand</th><th class="rt">A cash</th><th class="rt">B cash</th><th class="rt">Δ</th><th class="rt">%</th><th>State</th></tr></thead><tbody>${bl.rows}</tbody></table></div>
+    <p class="hint" style="margin-top:8px">Reconciliation: Σ brand Δ = ${F.aed(bl.totalDelta)} · B−A = ${F.aed(B.rev-A.rev)} ${Math.abs(bl.totalDelta-(B.rev-A.rev))<1?'✓ exact':'⚠'}</p></div>`;
+  document.getElementById("cmpA").value=CMP_A; document.getElementById("cmpB").value=CMP_B;
+  document.getElementById("cmpA").addEventListener("change",e=>{CMP_A=e.target.value;renderCompare(C);});
+  document.getElementById("cmpB").addEventListener("change",e=>{CMP_B=e.target.value;renderCompare(C);});
+  document.getElementById("cmpSwap").addEventListener("click",()=>{const t=CMP_A;CMP_A=CMP_B;CMP_B=t;renderCompare(C);});
+  chartBars(document.getElementById("cmpBars"),['Brands','Cash (÷1K)','ARPA'],[{name:A.label,color:cvar('--brand'),data:[A.acq,A.rev/1000,A.arpa]},{name:B.label,color:cvar('--violet'),data:[B.acq,B.rev/1000,B.arpa]}],{h:260});
+  chartWaterfall(document.getElementById("cmpBridge"),bridge,{fmt:v=>F.aed(v)});
+}
+function brandCompare(selA,selB){ const PA=resolvePeriod(selA,STATE.today),PB=resolvePeriod(selB,STATE.today);
+  const m={}; STATE.rows.filter(r=>r.isPaid).forEach(r=>{ const k=r.brand; m[k]=m[k]||{a:0,b:0}; if(PA.inSel(r.payDate))m[k].a+=r.total; if(PB.inSel(r.payDate))m[k].b+=r.total; });
+  const arr=Object.keys(m).map(k=>({name:k,a:m[k].a,b:m[k].b,d:m[k].b-m[k].a})).filter(x=>x.a||x.b).sort((x,y)=>Math.abs(y.d)-Math.abs(x.d));
+  const totalDelta=arr.reduce((s,x)=>s+x.d,0);
+  const rows=arr.slice(0,40).map(x=>{ const st=x.a&&x.b?'Continuing':x.b?'Added':'Removed'; const sp=st==='Added'?'green':st==='Removed'?'red':'grey'; const pct=x.a?(x.d/x.a*100):null;
+    return `<tr><td>${esc(x.name)}</td><td class="rt mono">${F.aed(x.a)}</td><td class="rt mono">${F.aed(x.b)}</td><td class="rt mono" style="color:${x.d>=0?'var(--green)':'var(--red)'}">${x.d>=0?'+':''}${F.aed(x.d)}</td><td class="rt">${pct==null?'New':F.pct(pct)}</td><td><span class="pill ${sp}">${st}</span></td></tr>`; }).join("");
+  return {rows:rows||'<tr><td class="hint">No paid cash in either period.</td></tr>',totalDelta}; }
+function revenueBridge(selA,selB,revA,revB){ const PA=resolvePeriod(selA,STATE.today),PB=resolvePeriod(selB,STATE.today);
+  const m={}; STATE.rows.filter(r=>r.isPaid).forEach(r=>{ const k=r.brand; m[k]=m[k]||{a:0,b:0}; if(PA.inSel(r.payDate))m[k].a+=r.total; if(PB.inSel(r.payDate))m[k].b+=r.total; });
+  let gained=0,lost=0; Object.values(m).forEach(v=>{ const d=v.b-v.a; if(d>=0)gained+=d; else lost+=d; });
+  return [{label:'Period A',total:true,value:revA},{label:'Increases & new',value:gained},{label:'Decreases & lost',value:lost},{label:'Period B',total:true,value:revB}]; }
+
+/* ---------------- PAGE 6: INTEGRATION ---------------- */
+function renderIntegration(C){
+  const el=document.getElementById("r-integration"); const t=STATE.tracker;
+  if(!t.length){ el.innerHTML=`<div class="panel"><h3>Integration</h3><p class="lede">Tracker not loaded. ${esc(STATE.trkMsg||'')}</p></div>`; return; }
+  const active=t.filter(r=>/active/i.test(r.status)).length, churned=t.filter(r=>/churn/i.test(r.status)).length, hold=t.filter(r=>/hold/i.test(r.status)).length;
+  const intDays=t.map(r=>r.daysIntegrate).filter(v=>v!=null&&v>=0); const avgInt=intDays.length?Math.round(intDays.reduce((a,b)=>a+b,0)/intDays.length):null;
+  const intDone=t.filter(r=>/complet/i.test(r.integration)).length;
+  // first-ad join
+  const fa=firstAdJoin(C.clients);
+  const kpis=[
+    kpi({ic:'users',accent:'brand',h:'Brands tracked',v:F.int(t.length),s:`${active} active · ${hold} on hold`}),
+    kpi({ic:'clock',accent:'green',h:'Avg days to integrate',v:avgInt!=null?avgInt:'—',s:`${intDays.length} with valid days`}),
+    kpi({ic:'play',accent:'violet',h:'Integration complete',v:`${intDone}/${t.length}`,s:'Dashboard Integration = completed'}),
+    kpi({ic:'rocket',accent:'brand',h:'Live with first ad',v:`${fa.live}`,s:`${fa.waiting} waiting · avg ${fa.avgLive!=null?fa.avgLive+'d':'—'}`}),
+    kpi({ic:'block',accent:'red',h:'Churned',v:F.int(churned),s:'auto-dropped from ARPA'})
+  ].join("");
+  // status distribution
+  const statusMap={}; t.forEach(r=>{const s=r.status||'Unknown';statusMap[s]=(statusMap[s]||0)+1;});
+  // integration x tier
+  const tiers=[...new Set(t.map(r=>r.tier).filter(Boolean))];
+  const intStatuses=['Completed','In process','Not started'];
+  const tierRows=tiers.map(ti=>{ const brs=t.filter(r=>r.tier===ti); const done=brs.filter(r=>/complet/i.test(r.integration)).length; const prog=brs.filter(r=>/process|progress/i.test(r.integration)).length; const none=brs.length-done-prog;
+    return {tier:ti,done,prog,none,total:brs.length}; });
+  // observable issues
+  const issues=integrationIssues(C,fa);
+  el.innerHTML=`<div class="kpis">${kpis}</div>
+  <div class="grid2">
+    <div class="panel">${panelHead('Integration status distribution','Actual tracker Dashboard Integration statuses — not a timed 5-stage funnel (no stage-event source).')}
+      <div id="iStatus"></div>
+      <div class="gate" style="margin-top:14px"><span class="tag">Stage events required</span><br>A dated <b>Paid→Setup→Data Access→QA→Live</b> funnel needs stage timestamps. Current data = snapshot statuses only.</div></div>
+    <div class="panel">${panelHead('Time to integrate','Distribution of valid Days-for-Integration (tracker). Median & spread, not a false monthly trend.')}
+      <div id="iHist"></div>
+      <table style="margin-top:12px"><tbody>
+        <tr><td>Median</td><td class="rt mono">${intDays.length?[...intDays].sort((a,b)=>a-b)[Math.floor(intDays.length/2)]:'—'} days</td></tr>
+        <tr><td>Average</td><td class="rt mono">${avgInt!=null?avgInt:'—'} days</td></tr>
+        <tr><td>Max</td><td class="rt mono">${intDays.length?Math.max(...intDays):'—'} days</td></tr></tbody></table></div>
+  </div>
+  <div class="grid2">
+    <div class="panel">${panelHead('Integration by client tier','Stacked by Dashboard Integration status within tracker tier.')}
+      ${tierRows.length?tierRows.map(r=>`<div style="margin:9px 0"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><span>${esc(r.tier)} <span class="hint">(${r.total})</span></span></div><div style="display:flex;height:16px;border-radius:7px;overflow:hidden;background:var(--surface2)"><span style="width:${r.done/r.total*100}%;background:var(--green)"></span><span style="width:${r.prog/r.total*100}%;background:var(--amber)"></span><span style="width:${r.none/r.total*100}%;background:var(--neutral)"></span></div></div>`).join(""):'<p class="hint">No tier data.</p>'}
+      <div class="legend"><span><span class="d" style="background:var(--green)"></span>Completed</span><span><span class="d" style="background:var(--amber)"></span>In process</span><span><span class="d" style="background:var(--neutral)"></span>Not started</span></div></div>
+    <div class="panel">${panelHead('Observable issues','Real, source-derived flags — not guessed root-cause blockers (no blocker/owner/SLA field exists).')}
+      <table><thead><tr><th>Issue</th><th class="rt">Count</th></tr></thead><tbody>${issues.map(i=>`<tr><td><span class="d" style="background:${i.color}"></span>${esc(i.label)}</td><td class="rt"><b>${i.count}</b></td></tr>`).join("")}</tbody></table>
+      <div class="gate" style="margin-top:12px"><span class="tag">Ops fields required</span><br>Owner, SLA and named blocker reasons need a governed onboarding-events sheet. No fake owner or "send reminder".</div></div>
+  </div>
+  <div class="panel" style="margin-top:15px">${panelHead('Onboarding tracker','Brand · tier · status · integration · days · first-ad · payment→first-ad · current vs paid milestone · match.')}
+    <div class="tbl-wrap" style="max-height:420px;overflow:auto"><table><thead><tr><th>Brand</th><th>Tier</th><th>Status</th><th>Integration</th><th class="rt">Days</th><th>First ad</th><th class="rt">Pay→Ad</th><th>Curr M</th><th>Paid M</th><th>Match</th></tr></thead><tbody>${integrationTable(C)}</tbody></table></div></div>`;
+  chartHBars(document.getElementById("iStatus"),Object.keys(statusMap).map(k=>({label:k,value:statusMap[k],color:/churn/i.test(k)?'var(--red)':/active/i.test(k)?'var(--green)':/hold/i.test(k)?'var(--amber)':'var(--neutral)'})),{labelW:110,valW:40});
+  // histogram
+  const buckets=[[0,10],[10,20],[20,30],[30,45],[45,999]]; const bl=['0–10','10–20','20–30','30–45','45+'];
+  const bc=buckets.map(([lo,hi])=>intDays.filter(d=>d>=lo&&d<hi).length);
+  chartBars(document.getElementById("iHist"),bl,[{name:'Brands',color:cvar('--brand'),data:bc}],{h:200,valueLabels:true});
+}
+function firstAdJoin(clients){ let live=0,waiting=0; const liveDays=[];
+  STATE.tracker.forEach(t=>{ const c=clients.find(cl=>normBrand(cl.name)===normBrand(t.brand)); const m1=c&&c.paid.filter(i=>i.mile===1&&i.payDate).sort((a,b)=>a.payDate-b.payDate)[0];
+    if(t.firstAd&&m1){ live++; liveDays.push(Math.round((t.firstAd-m1.payDate)/86400000)); } else if(m1&&!t.firstAd){ waiting++; } });
+  const valid=liveDays.filter(d=>d>=0); return {live,waiting,avgLive:valid.length?Math.round(valid.reduce((a,b)=>a+b,0)/valid.length):null}; }
+function integrationIssues(C,fa){ const t=STATE.tracker; const recv=new Set(STATE.rows.map(r=>normBrand(r.brand)));
+  return [
+    {label:'Unmatched tracker brand',count:t.filter(r=>!recv.has(normBrand(r.brand))).length,color:cvar('--red')},
+    {label:'Integration not completed',count:t.filter(r=>!/complet/i.test(r.integration)).length,color:cvar('--amber')},
+    {label:'On hold',count:t.filter(r=>/hold/i.test(r.status)).length,color:cvar('--amber')},
+    {label:'Paid M1 but no first ad yet',count:fa.waiting,color:cvar('--amber')},
+    {label:'Negative/invalid integration days',count:t.filter(r=>r.daysIntegrate!=null&&r.daysIntegrate<0).length,color:cvar('--red')},
+    {label:'Churned',count:t.filter(r=>/churn/i.test(r.status)).length,color:cvar('--neutral')}
+  ]; }
+function integrationTable(C){ return STATE.tracker.map(t=>{ const c=C.clients.find(cl=>normBrand(cl.name)===normBrand(t.brand));
+  const m1=c&&c.paid.filter(i=>i.mile===1&&i.payDate).sort((a,b)=>a.payDate-b.payDate)[0]; const paidM=c?c.paidLevel:null;
+  const pay2ad=(t.firstAd&&m1)?Math.round((t.firstAd-m1.payDate)/86400000):null; const matched=!!c;
+  const stp=/churn/i.test(t.status)?'red':/active/i.test(t.status)?'green':/hold/i.test(t.status)?'amber':'grey';
+  const intp=/complet/i.test(t.integration)?'green':/process|progress/i.test(t.integration)?'amber':'grey';
+  return `<tr><td class="cflex"><span class="avatar" style="background:${avatarColor(t.brand)}">${esc(initials(t.brand))}</span>${esc(t.brand)}</td><td>${esc(t.tier||'—')}</td><td><span class="pill ${stp}">${esc(t.status||'—')}</span></td><td><span class="pill ${intp}">${esc(t.integration||'—')}</span></td><td class="rt mono">${t.daysIntegrate!=null?t.daysIntegrate:'—'}</td><td class="mono">${t.firstAd?F.date(t.firstAd):'<span class="hint">—</span>'}</td><td class="rt mono">${pay2ad!=null?pay2ad+'d':'—'}</td><td>${t.milestone?'M'+t.milestone:'—'}</td><td>${paidM?'M'+paidM:'<span class="hint">—</span>'}</td><td style="text-align:center"><span class="d" style="width:11px;height:11px;background:${matched?'var(--green)':'var(--red)'}"></span></td></tr>`; }).join(""); }
+
+/* ---------------- PAGE 7: CLIENT LEDGER ---------------- */
+function renderLedger(C){
+  const el=document.getElementById("r-ledger"); const P=C.P;
+  const totalInv=C.rows.filter(r=>P.inSel(r.invDate)).length;
+  const kpis=[
+    kpi({ic:'bill',accent:'brand',h:'Invoices issued',v:F.int(totalInv),s:`in ${esc(P.label)} (by invoice date)`}),
+    kpi({ic:'cash',accent:'green',h:'Collected (cash period)',cur:F.ccyLbl(),v:F.aed(C.rev).replace(/^[^\d-]+/,''),s:'by payment date'}),
+    kpi({ic:'clock',accent:'violet',h:'Outstanding (as-of)',cur:F.ccyLbl(),v:F.aed(C.openAR).replace(/^[^\d-]+/,''),s:`${C.openAsOf.length} open invoices`}),
+    kpi({ic:'alert',accent:'red',h:'Overdue (as-of)',cur:F.ccyLbl(),v:F.aed(C.overdueAR).replace(/^[^\d-]+/,''),s:`${C.overdue.length} invoices`}),
+    kpi({ic:'users',accent:'brand',h:'Active clients',v:F.int(C.clients.filter(c=>c.hasPaid).length),s:'with ≥1 paid invoice'})
+  ].join("");
+  const ag=ageingBuckets(C.openAsOf,C.today);
+  const statusCount={Paid:C.rows.filter(r=>r.isPaid).length,Open:C.rows.filter(r=>!r.isPaid&&!r.isCancelled).length,Cancelled:C.rows.filter(r=>r.isCancelled).length};
+  const topOut=C.clients.filter(c=>c.outstanding>0).sort((a,b)=>b.outstanding-a.outstanding).slice(0,6);
+  el.innerHTML=`<div class="kpis">${kpis}</div>
+  <div class="grid3">
+    <div class="panel">${panelHead('Aging summary','Open balances by age of due date, as-of '+F.date(C.today)+'. Gross invoice totals.')}
+      <div id="lAge"></div></div>
+    <div class="panel">${panelHead('Invoice status','By count — Paid / Open / Cancelled.')}
+      <div id="lStatus" style="display:flex;justify-content:center"></div>
+      <div style="margin-top:10px">${Object.keys(statusCount).map((k,i)=>`<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:12.5px"><span><span class="d" style="background:${[cvar('--brand'),cvar('--violet'),cvar('--red')][i]}"></span>${k}</span><b>${statusCount[k]}</b></div>`).join("")}</div></div>
+    <div class="panel">${panelHead('Largest outstanding balances','Top open balances by brand.')}
+      <div id="lTop"></div></div>
+  </div>
+  <div class="panel" style="margin-top:15px">${panelHead('Client ledger','Every client, every invoice. Click to expand source-level detail.','')}
+    <div class="seg" id="ledgerFilter" style="margin-bottom:12px"><button data-f="all" class="on">All</button><button data-f="paid">Has paid</button><button data-f="outstanding">Outstanding</button><button data-f="roas">ROAS only</button></div>
+    <span class="hint" id="ledgerCount" style="margin-left:8px"></span>
+    <div id="ledgerList" style="margin-top:10px"></div></div>`;
+  chartHBars(document.getElementById("lAge"),ag.map(b=>({label:b.label,value:b.amt,color:b.color})),{fmt:v=>F.aed(v),labelW:90,valW:84});
+  chartDonut(document.getElementById("lStatus"),[{label:'Paid',value:statusCount.Paid,color:cvar('--brand')},{label:'Open',value:statusCount.Open,color:cvar('--violet')},{label:'Cancelled',value:statusCount.Cancelled,color:cvar('--red')}],{centerNum:C.rows.length,centerLbl:'invoices'});
+  chartHBars(document.getElementById("lTop"),topOut.map(c=>({label:c.name,value:c.outstanding})),{fmt:v=>F.aed(v),labelW:110,valW:84});
+  renderLedgerList(C.clients);
+  el.querySelectorAll("#ledgerFilter button").forEach(b=>b.addEventListener("click",()=>{ el.querySelectorAll("#ledgerFilter button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); STATE.ledgerFilter=b.dataset.f; renderLedgerList(C.clients); }));
+}
+function renderLedgerList(clients){ const el=document.getElementById("ledgerList"); if(!el)return; let list=[...clients]; const f=STATE.ledgerFilter;
+  if(f==="paid")list=list.filter(c=>c.hasPaid); else if(f==="outstanding")list=list.filter(c=>c.outstanding>0); else if(f==="roas")list=list.filter(c=>c.level);
+  list.sort((a,b)=>b.totalPaid-a.totalPaid); document.getElementById("ledgerCount").textContent=`${list.length} clients`;
+  el.innerHTML=list.map(c=>{ const statusPill=c.outstanding>0?`<span class="pill amber">${F.aed(c.outstanding)} open</span>`:c.hasPaid?`<span class="pill green">Settled</span>`:`<span class="pill grey">No payment</span>`;
+    const invRows=[...c.invs].sort((a,b)=>(b.invDate||0)-(a.invDate||0)).map(i=>{ const p=i.isPaid?"green":i.isCancelled?"red":"amber", st=i.isPaid?"Paid":i.isCancelled?"Cancelled":(i.status||"Open");
+      const age=i.due&&!i.isPaid?Math.max(0,Math.floor((STATE.today-i.due)/86400000)):null;
+      return `<tr><td class="mono">${esc(i.invoice||'—')}</td><td>${esc(shortDesc(i.desc))||'—'}</td><td>${i.mile?moonPhases(i.mile):'<span class="hint">N/A</span>'}</td><td class="mono">${F.date(i.invDate)}</td><td class="mono">${F.date(i.due)}</td><td class="rt mono">${F.aed(i.total)}${(i.refundUsd||i.refundAed)?' <span class="pill red" style="font-size:9px">refund</span>':''}</td><td><span class="pill ${p}">${st}</span></td><td class="mono">${i.payDate?F.date(i.payDate):(age!=null?`<span class="hint">${age}d</span>`:'—')}</td><td class="hint">${esc(i.payMethod||i.amend||'')}</td></tr>`; }).join("");
+    return `<details class="client"><summary>
+      <span class="cflex"><span class="caret">▸</span><span class="avatar" style="background:${avatarColor(c.name)}">${esc(initials(c.name))}</span><span>${esc(c.name)}${c.entities.length&&c.entities[0]!==c.name?`<br><small class="hint">${esc(c.entities.join(' · '))}</small>`:''}</span></span>
+      <span class="cmeta">ROAS<br>${moonPhases(c.level)}</span><span class="cmeta">Paid<br><b>${F.aed(c.totalPaid)}</b></span><span class="cmeta">Invoices<br><b>${c.invs.length}</b></span><span>${statusPill}</span></summary>
+      <div class="cbody"><div class="tbl-wrap"><table><thead><tr><th>Invoice</th><th>Description</th><th>Milestone</th><th>Issued</th><th>Due</th><th class="rt">Amount</th><th>Status</th><th>Paid / age</th><th>Method / note</th></tr></thead><tbody>${invRows}</tbody></table></div></div></details>`; }).join("")||'<p class="hint">No clients match this filter.</p>';
+}
+
+/* =========================================================================
+   CONTROLS / NAV / THEME / EXPORT / SAMPLE
+   ========================================================================= */
+function setupNav(){ document.querySelectorAll(".navitem[data-r]").forEach(b=>b.addEventListener("click",()=>{
+  document.querySelectorAll(".navitem[data-r]").forEach(x=>x.classList.remove("on")); b.classList.add("on");
+  STATE.route=b.dataset.r; document.querySelectorAll(".report").forEach(s=>s.classList.remove("on"));
+  document.getElementById("r-"+STATE.route).classList.add("on"); render(); })); }
+function setupTheme(){ const apply=()=>{ document.getElementById("themeLbl").textContent=(document.documentElement.getAttribute("data-theme")==="dark")?"Light mode":"Dark mode"; };
+  document.getElementById("themeItem").onclick=()=>{ const cur=document.documentElement.getAttribute("data-theme"); document.documentElement.setAttribute("data-theme",cur==="dark"?"light":"dark"); apply(); render(); };
+  document.getElementById("ccyItem").onclick=()=>{ STATE.ccy=STATE.ccy==="USD"?"AED":"USD"; document.getElementById("ccyLbl").textContent=STATE.ccy==="USD"?"Show in AED":"Show in USD"; render(); };
+  apply(); }
+function setupControls(){
+  // period segmented
+  document.querySelectorAll("#periodSeg button").forEach(b=>b.addEventListener("click",()=>{
+    document.querySelectorAll("#periodSeg button").forEach(x=>x.classList.remove("on")); b.classList.add("on");
+    STATE.periodMode=b.dataset.p; buildPeriodOptions(); render(); }));
+  document.getElementById("periodSel").addEventListener("change",e=>{ STATE.period=e.target.value; render(); });
+  // custom range
+  const pop=document.getElementById("customPop");
+  document.getElementById("customBtn").addEventListener("click",()=>pop.classList.toggle("open"));
+  document.getElementById("custApply").addEventListener("click",()=>{ const f=document.getElementById("custFrom").value,t=document.getElementById("custTo").value;
+    if(f&&t){ STATE.period="C:"+f+":"+t; pop.classList.remove("open"); render(); } });
+  document.getElementById("custClear").addEventListener("click",()=>{ pop.classList.remove("open"); buildPeriodOptions(); render(); });
+  // search + typeahead
+  const s=document.getElementById("search"), ta=document.getElementById("typeahead");
+  s.addEventListener("input",()=>{ STATE.query=s.value.trim(); const q=STATE.query.toLowerCase();
+    if(q.length<2){ ta.classList.remove("open"); render(); return; }
+    const names=[...new Set(STATE.rows.map(r=>r.brand))].filter(n=>n.toLowerCase().includes(q)).slice(0,8);
+    ta.innerHTML=names.map(n=>`<div class="item" data-n="${esc(n)}">${esc(n)}<small>brand</small></div>`).join(""); ta.classList.toggle("open",names.length>0);
+    ta.querySelectorAll(".item").forEach(it=>it.addEventListener("click",()=>{ s.value=it.dataset.n; STATE.query=it.dataset.n; ta.classList.remove("open"); render(); }));
+    render(); });
+  document.addEventListener("click",e=>{ if(!e.target.closest(".search-wrap"))ta.classList.remove("open"); });
+  document.getElementById("resetBtn").addEventListener("click",()=>{ STATE.query=""; s.value=""; STATE.manualDropped=new Set(); applyChurnDrops(); BB_PROMOTE1=0; BB_PROMOTE2=0; buildPeriodOptions(); render(); });
+  document.getElementById("refreshBtn").addEventListener("click",()=>{ loadFromSheet(true); loadTracker(); });
+  document.getElementById("fileInput").addEventListener("change",e=>{ const file=e.target.files[0]; if(!file)return;
+    Papa.parse(file,{header:true,skipEmptyLines:true,complete:res=>ingest(res.data,res.meta.fields,"Uploaded: "+file.name,"sample")}); });
+  document.getElementById("exportBtn").addEventListener("click",exportModel);
+  // DQ panel
+  document.getElementById("dqToggle").addEventListener("click",()=>{ const p=document.getElementById("dqPanel"); p.classList.toggle("open");
+    p.innerHTML=`<b>Data quality & provenance (${STATE.dq.length})</b><ul>${STATE.dq.map(d=>`<li>${esc(d)}</li>`).join("")}</ul>`; });
+}
+function exportModel(){ try{ const C=computeContext(); const A=C.A;
+  const wb=XLSX.utils.book_new();
+  const arpa=A.rows.map(r=>({Brand:r.name,PaidMilestone:r.level,Basis:r.basis,RefundUSD:Math.round(r.refundAmt),ModelledNetUSD:Math.round(r.usd),Dropped:r.dropped?'Y':'',Churn:r.churn?'Y':''}));
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(arpa),"ARPA model");
+  const led=[]; C.clients.forEach(c=>c.invs.forEach(i=>led.push({Invoice:i.invoice,Client:c.name,Brand:i.brand,Milestone:i.mile||'',InvoiceDate:F.date(i.invDate),DueDate:F.date(i.due),Total_AED:i.total,USD_Amount:i.usd,VAT_Included:i.vatInc?'Y':'',Status:i.status,PaymentDate:i.payDate?F.date(i.payDate):'',PaymentMethod:i.payMethod,Terms:i.terms,Amendment:i.amend})));
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(led),"Ledger");
+  const meta=[{Field:'Source',Value:STATE.source},{Field:'As-of',Value:F.date(STATE.today)},{Field:'AED/USD',Value:CONFIG.AED_PER_USD},{Field:'ARPA target',Value:CONFIG.ARPA_TARGET},{Field:'Modelled ARPA',Value:Math.round(A.arpa)},{Field:'ARPA brands',Value:A.n},{Field:'Currency state',Value:STATE.srcKind}];
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(meta),"Provenance");
+  XLSX.writeFile(wb,"MoonTech_ClientIntelligence_"+F.ym(STATE.today)+".xlsx");
+  }catch(e){ alert("Export failed: "+e.message); } }
+
+function loadSample(silent, reason){
+  const csv=`Invoice,Client Name,Brand Name,Description,Brand,ROAS- Milestone,Invoice Date,Payment Terms,Due date,Days past due,Total,Invoice Status,Ammendment Details,No of reminders till confirmation,No of reminders till payment,Payment receipt date,Days between invoicing and payment,Todays Date
+DRM-01,DREAMABLE - Moontech,Dreamable,March 2025 Influencer Marketing,New Brand,N/A,03/12/2025,,3/12/2025,0,30011.56,Paid,,,,03/17/2025,5,10/22/2026
+JSH-01,Just Hype Trading LLC,JustHype,July 2025 Influencer Marketing,New Brand,N/A,07/01/2025,,7/1/2025,0,27456.00,Paid,,,,07/02/2025,1,10/22/2026
+TEM-01,Touche Elektronik,Touche Prive,November 2025 Performance (ROAS),New Brand,Milestone-1,11/10/2025,,11/10/2025,0,3672.50,Paid,,,,11/10/2025,0,10/22/2026
+ANF-01,ANFASIK DOKHOON (LLC),Anfasik Dokhoon,December 2025 Performance (ROAS),New Brand,Milestone-1,12/04/2025,,12/4/2025,0,7350.00,Paid,,,,02/20/2026,78,10/22/2026
+GSL-01,Golden Scent LLC,Golden Scent,December 2025 Performance (ROAS M1),New Brand,Milestone-1,12/30/2025,,12/30/2025,0,3672.50,Paid,,,,01/06/2026,7,10/22/2026
+GSL-02,Golden Scent LLC,Golden Scent,January 2026 (ROAS M2),,Milestone-2,01/06/2026,,1/6/2026,0,7345.00,Paid,,,,01/12/2026,6,10/22/2026
+GSL-03,Golden Scent LLC,Golden Scent,February 2026 (ROAS M3),,Milestone-3,02/02/2026,,2/2/2026,0,11017.50,Paid,,,,02/12/2026,10,10/22/2026
+GSL-04,Golden Scent LLC,Golden Scent,March 2026 (ROAS M4),,Milestone-4,03/13/2026,,3/13/2026,0,18362.50,Paid,,,,03/24/2026,11,10/22/2026
+RTB-01,KITOPI - Right Bite,Right Bite,December 2025 (ROAS M1),New Brand,Milestone-1,12/23/2025,,12/23/2025,0,3672.50,Paid,,,,01/02/2026,10,10/22/2026
+RTB-03,KITOPI - Right Bite,Right Bite,March 2026 (ROAS M3),,Milestone-3,04/21/2026,,4/21/2026,0,11568.38,Paid,,,,05/15/2026,24,10/22/2026
+RTB-05,KITOPI - Right Bite,Right Bite,July 2026 (ROAS M5),,Milestone-5,07/09/2026,,7/9/2026,0,28920.94,Paid,,,,08/04/2026,26,10/22/2026
+SEH-01,Sahseh Digital,Sahseh,February 2026 (ROAS M1),New Brand,Milestone-1,02/23/2026,,2/23/2026,0,3856.13,Paid,,,,03/04/2026,9,10/22/2026
+BMP-01,Bookmypet FZE,Book My Pet,February 2026 (ROAS M1),New Brand,Milestone-1,02/24/2026,,2/24/2026,0,3856.13,Paid,,,,03/04/2026,9,10/22/2026
+DRP-01,Dropshop llc,Lawni,February 2026 (ROAS M1),New Brand,Milestone-1,02/26/2026,,2/26/2026,0,3856.13,Paid,,,,03/07/2026,9,10/22/2026
+SEC-01,Studio earth,Studio Earth,March 2026 (ROAS M1),New Brand,Milestone-1,03/02/2026,,3/2/2026,0,3856.13,Paid,,,,04/22/2026,51,10/22/2026
+SMT-01,Smarteletec,Numero,March 2026 (ROAS M1),New Brand,Milestone-1,03/13/2026,,3/13/2026,0,3672.50,Paid,,,,04/02/2026,20,10/22/2026
+FAS-01,Pure N Bio,Pure N Bio,April 2026 (ROAS M1),New Brand,Milestone-1,04/07/2026,,4/7/2026,0,3672.50,Paid,,,,04/09/2026,2,10/22/2026
+AAL-01,Oneshot,Oneshot,April 2026 (ROAS M1),New Brand,Milestone-1,04/24/2026,,4/24/2026,0,3672.50,Paid,,,,05/07/2026,13,10/22/2026
+AYF-01,Al Yasra - DKNY,DKNY,May 2026 (ROAS M1),New Brand,Milestone-1,05/13/2026,,5/13/2026,0,3672.50,Paid,,,,05/19/2026,6,10/22/2026
+AYF-03,Al Yasra - Kizik,Kizik,May 2026 (ROAS M1),New Brand,Milestone-1,05/19/2026,,5/19/2026,0,3672.50,Paid,,,,05/19/2026,0,10/22/2026
+IZI-01,Izil Cosmetics,Izil,May 2026 (ROAS M1),New Brand,Milestone-1,05/25/2026,,5/25/2026,0,31500.00,Paid,,,,07/31/2026,67,10/22/2026
+AWG-01,AMAANI WELLNESS,Aiza,May 2026 (ROAS M1),New Brand,Milestone-1,05/25/2026,,5/25/2026,0,3856.13,Paid,,,,05/25/2026,0,10/22/2026
+TEC-01,The Elite Cars,Jetour,June 2026 (CPL Stage 1),New Brand,Stage 1,06/04/2026,,6/4/2026,0,3856.13,Paid,,,,06/09/2026,5,10/22/2026
+MST-01,Maison Safka,Maison Safka,June 2026 (ROAS M1),New Brand,Milestone-1,06/04/2026,,6/4/2026,0,3672.50,Paid,,,,06/04/2026,0,10/22/2026
+MST-02,Maison Safka,Maison Safka,July 2026 (ROAS M2),,Milestone-2,07/08/2026,,7/8/2026,0,7345.00,Paid,,,,07/14/2026,6,10/22/2026
+ARM-01,Arte Madrid,Arte Madrid,June 2026 Performance,New Brand,Milestone-1,06/26/2026,,6/26/2026,0,3672.50,Paid,,,,06/30/2026,4,10/22/2026
+JSH-05,Justhype,JustHype,July 2026 (ROAS M1),New Brand,Milestone-1,07/08/2026,,7/8/2026,0,3856.13,Paid,,,,07/08/2026,0,10/22/2026
+REF-01,Reefi,Reefi,July 2026 (ROAS M1),New Brand,Milestone-1,07/09/2026,,7/9/2026,0,3672.50,Paid,,,,07/20/2026,11,10/22/2026
+GSL-05,Golden Scent LLC,Golden Scent,April 2026 (ROAS M5),,Milestone-5,04/27/2026,,4/27/2026,114,18362.50,Unconfirmed,,,,,,10/22/2026
+`;
+  const res=Papa.parse(csv,{header:true,skipEmptyLines:true});
+  ingest(res.data,res.meta.fields,"Sample data (not live)","sample");
+  if(reason){ setStatus(reason.kind,reason.msg); }
+}
+</script>
+</body>
+</html>
